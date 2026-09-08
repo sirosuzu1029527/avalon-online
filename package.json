@@ -1,0 +1,12 @@
+{
+  "name": "avalon-online-private",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Private-use realtime Avalon-style web app (zero dependencies)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test.js"
+  },
+  "engines": { "node": ">=18" }
+}

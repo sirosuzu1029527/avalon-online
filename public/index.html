@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#111725" />
+  <title>非公式 The Resistance : Avalon Online</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="bg"></div>
+  <header class="site-header">
+    <div class="eyebrow">非公式 The Resistance</div>
+    <div class="brand-wrap">
+      <span class="brand-line"></span>
+      <h1>AVALON <em>ONLINE</em></h1>
+      <span class="brand-line"></span>
+    </div>
+  </header>
+
+  <main id="app" class="container">
+    <section id="homeView" class="view">
+      <div class="panel hero-panel">
+        <div class="ornament">◆</div>
+        <h2>Initiation</h2>
+        <p class="muted">5〜10人用・リアルタイム同期版</p>
+        <label class="field">
+          <span>表示名</span>
+          <input id="nameInput" autocomplete="nickname" maxlength="20" placeholder="名前" />
+        </label>
+        <button id="createBtn" class="btn primary wide">部屋を作る</button>
+        <div class="divider"><span>or</span></div>
+        <label class="field">
+          <span>ROOM CODE</span>
+          <input id="codeInput" maxlength="5" autocapitalize="characters" placeholder="ABCDE" />
+        </label>
+        <button id="joinBtn" class="btn wide">部屋に参加</button>
+        <p class="tiny muted">同じURLを開き、ルームコードを入力すると参加できます。</p>
+      </div>
+    </section>
+
+    <section id="roomView" class="view hidden">
+      <div class="room-topbar">
+        <div>
+          <div class="eyebrow">ROOM</div>
+          <div class="room-code" id="roomCode">-----</div>
+        </div>
+        <div class="room-actions">
+          <button id="copyCodeBtn" class="btn small">コードコピー</button>
+          <button id="copyLinkBtn" class="btn small">招待リンク</button>
+          <button id="leaveBtn" class="btn small danger">退出</button>
+        </div>
+      </div>
+
+      <div id="phaseBanner" class="phase-banner"></div>
+
+      <div class="game-grid">
+        <section class="panel main-panel">
+          <div id="mainContent"></div>
+        </section>
+        <aside class="side-stack">
+          <section class="panel" id="identityPanel"></section>
+          <section class="panel" id="playersPanel"></section>
+          <section class="panel" id="missionPanel"></section>
+        </aside>
+      </div>
+
+      <section class="panel log-panel">
+        <details>
+          <summary>Dispatch Log</summary>
+          <div id="logList" class="log-list"></div>
+        </details>
+      </section>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
