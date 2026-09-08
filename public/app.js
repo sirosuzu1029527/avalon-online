@@ -63,6 +63,8 @@ function connectEvents(code) {
         render();
       } else if (msg.type === 'kicked') {
         forgetRoom(); state = null; roomView.classList.add('hidden'); homeView.classList.remove('hidden'); toast('部屋から削除されました。');
+      } else if (msg.type === 'rematchExcluded') {
+        forgetRoom(); state = null; roomView.classList.add('hidden'); homeView.classList.remove('hidden'); toast('次のゲーム開始時点でロビーに戻っていなかったため、部屋から外れました。');
       }
     } catch {}
   };
@@ -108,6 +110,7 @@ $('copyLinkBtn').onclick = () => {
 };
 $('leaveBtn').onclick = async () => {
   if (!state) return;
+  if (!confirm('部屋から退出しますか？')) return;
   try {
     await post('/api/action', { code:state.code, token:token(), type:'leaveRoom', payload:{} });
     forgetRoom(); state=null; roomView.classList.add('hidden'); homeView.classList.remove('hidden'); toast('部屋を退出しました。');
