@@ -4,16 +4,17 @@
   const originalRenderLobby = renderLobby;
 
   function renderHostEndGameControl() {
-    if (!state || !isHost() || state.phase === 'lobby' || state.phase === 'gameover') return;
-    if (document.getElementById('endGameBtn')) return;
+    const button = $('endGameBtn');
+    if (!button) return;
 
-    const actions = document.createElement('div');
-    actions.className = 'actions';
-    actions.style.marginTop = '20px';
-    actions.innerHTML = '<button id="endGameBtn" class="btn danger">ゲーム終了</button>';
-    mainContent.appendChild(actions);
+    const visible = state && isHost() && !['lobby', 'gameover'].includes(state.phase);
+    button.classList.toggle('hidden', !visible);
+    if (!visible) {
+      button.onclick = null;
+      return;
+    }
 
-    document.getElementById('endGameBtn').onclick = () => {
+    button.onclick = () => {
       if (confirm('現在のゲームを終了しますか？\n全員の役職が公開されます。')) action('endGame');
     };
   }
