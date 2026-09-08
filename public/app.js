@@ -202,11 +202,20 @@ function renderMain() {
   if (state.phase === 'assassination') return renderAssassination();
   if (state.phase === 'gameover') return renderGameover();
 }
+function standardRoleSummary(n) {
+  if (n < 5 || n > 10) return '<div class="notice">5〜10人そろうと、現在の人数に対応する Standard の配役が表示されます。</div>';
+  const evilCount = n <= 6 ? 2 : n <= 9 ? 3 : 4;
+  const loyalCount = n - evilCount - 2;
+  const evilRoles = n <= 6 ? ['暗殺者', 'モルガナ'] : n <= 9 ? ['暗殺者', 'モルガナ', 'モードレッド'] : ['暗殺者', 'モルガナ', 'モードレッド', 'オベロン'];
+  const loyal = loyalCount > 0 ? ` / アーサーの忠臣×${loyalCount}` : '';
+  return `<div class="subhead" style="margin-top:12px">${n}人用 Standard</div><div class="notice"><b>善陣営：</b>マーリン / パーシヴァル${loyal}<br><b>悪陣営：</b>${evilRoles.join(' / ')}</div>`;
+}
 function renderLobby() {
   const n = state.players.length, canStart = n >= 5 && n <= 10 && state.players.every(p => p.connected);
   let setup = '';
   if (isHost()) {
-    setup = `<div class="setup-grid"><div><div class="subhead">配役プリセット</div><select id="presetSelect"><option value="standard" ${state.setup.preset==='standard'?'selected':''}>Standard</option><option value="simple" ${state.setup.preset==='simple'?'selected':''}>Simple</option><option value="custom" ${state.setup.preset==='custom'?'selected':''}>Custom</option></select><p class="tiny muted">Standard は人数に応じて特殊役職を増やします。Simple はマーリン＋暗殺者のみです。</p></div><div id="customRoles" class="${state.setup.preset==='custom'?'':'hidden'}"><div class="subhead">カスタム役職</div><div class="checkboxes">${['merlin','percival','assassin','morgana','mordred','oberon'].map(r=>`<label class="checkline"><input type="checkbox" data-role="${r}" ${state.setup.custom[r]?'checked':''}> ${roleName(r)}</label>`).join('')}</div></div></div><div class="actions"><button id="startGameBtn" class="btn primary" ${canStart?'':'disabled'}>ゲーム開始</button></div>`;
+    const standardRoles = state.setup.preset === 'standard' ? standardRoleSummary(n) : '';
+    setup = `<div class="setup-grid"><div><div class="subhead">配役プリセット</div><select id="presetSelect"><option value="standard" ${state.setup.preset==='standard'?'selected':''}>Standard</option><option value="simple" ${state.setup.preset==='simple'?'selected':''}>Simple</option><option value="custom" ${state.setup.preset==='custom'?'selected':''}>Custom</option></select><p class="tiny muted">Standard は人数に応じて特殊役職を増やします。Simple はマーリン＋暗殺者のみです。</p>${standardRoles}</div><div id="customRoles" class="${state.setup.preset==='custom'?'':'hidden'}"><div class="subhead">カスタム役職</div><div class="checkboxes">${['merlin','percival','assassin','morgana','mordred','oberon'].map(r=>`<label class="checkline"><input type="checkbox" data-role="${r}" ${state.setup.custom[r]?'checked':''}> ${roleName(r)}</label>`).join('')}</div></div></div><div class="actions"><button id="startGameBtn" class="btn primary" ${canStart?'':'disabled'}>ゲーム開始</button></div>`;
   } else setup = '<div class="notice">ホストがゲームを開始するまでお待ちください。</div>';
   const kick = isHost() ? `<div class="subhead">参加者管理</div><div class="player-list">${state.players.map(p=>`<div class="player-row"><span class="dot ${p.connected?'online':''}"></span><span class="name">${escapeHtml(p.name)}</span>${p.id!==state.hostId?`<button class="btn small remove-player" data-id="${p.id}">削除</button>`:'<span class="badge host">HOST</span>'}</div>`).join('')}</div>` : '';
   mainContent.innerHTML = `<h2 class="section-title">Waiting Room</h2><p class="lead">現在 <b>${n}</b> 人参加中。5〜10人で開始できます。</p>${!canStart&&isHost()?'<div class="notice gold">5人以上そろい、全員が接続中になると開始できます。</div>':''}${setup}${kick}`;
