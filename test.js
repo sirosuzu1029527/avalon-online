@@ -1,5 +1,5 @@
 const assert = require('assert');
-const { server, rooms, defaultRoles, simpleRoles, customRoles, MISSION_CONFIG, ROLE_META } = require('./server');
+const { server, rooms, defaultRoles, simpleRoles, customRoles, MISSION_CONFIG, ROLE_META, publicState } = require('./server');
 
 async function main() {
   for (let n=5;n<=10;n++) {
@@ -19,6 +19,10 @@ async function main() {
     if(!r.ok) throw new Error(j.message);
     return j;
   };
+  const rawPost=async(path,body)=>{
+    const r=await fetch(base+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+    return { status:r.status, body:await r.json() };
+  };
   const home=await fetch(base+'/'); assert.equal(home.status,200); assert.match(await home.text(),/AVALON/);
   const c=await post('/api/create',{name:'P1',token:'t1'}); assert.equal(c.code.length,5);
   for(let i=2;i<=5;i++) await post('/api/join',{code:c.code,name:`P${i}`,token:`t${i}`});
@@ -37,6 +41,25 @@ async function main() {
   for(const id of room.selectedTeam){ const p=room.players.find(q=>q.id===id); await post('/api/action',{code:c.code,token:p.token,type:'missionVote',payload:{success:true}}); }
   assert.equal(room.missions[0].success,true);
   assert.equal(room.phase,'team');
+
+  const nonHost = room.players.find(p=>p.id!==room.hostId);
+  const denied=await rawPost('/api/action',{code:c.code,token:nonHost.token,type:'endGame',payload:{}});
+  assert.equal(denied.status,400);
+  assert.match(denied.body.message,/ホストのみ/);
+  assert.equal(room.phase,'team');
+
+  await post('/api/action',{code:c.code,token:'t1',type:'endGame',payload:{}});
+  assert.equal(room.phase,'gameover');
+  assert.equal(room.winner,null);
+  assert.equal(room.winnerReason,'ホストがゲームを終了しました。');
+  const host=room.players.find(p=>p.id===room.hostId);
+  const endedState=publicState(room,host);
+  assert.ok(endedState.players.every(p=>p.role));
+
+  await post('/api/action',{code:c.code,token:'t1',type:'restartGame',payload:{}});
+  assert.equal(room.phase,'lobby');
+  assert.ok(room.players.every(p=>p.role===null));
+
   const health=await fetch(base+'/health'); assert.equal((await health.json()).ok,true);
   console.log('All tests passed');
   await new Promise(resolve=>server.close(resolve));
