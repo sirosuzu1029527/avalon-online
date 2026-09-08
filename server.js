@@ -74,28 +74,26 @@ function getPlayer(room, token) { return room.players.find(p => p.token === toke
 function roleKnowledge(room, viewer) {
   if (!viewer.role) return [];
   const players = room.players, lines = [], role = viewer.role;
-  if (role === 'merlin') {
-    lines.push({ label: '見えている悪陣営', playerIds: players.filter(p => ROLE_META[p.role]?.team === 'evil' && p.role !== 'mordred').map(p => p.id) });
-  }
-  if (role === 'percival') {
-    lines.push({ label: 'マーリン候補', playerIds: shuffle(players.filter(p => p.role === 'merlin' || p.role === 'morgana').map(p => p.id)) });
-  }
-  if (ROLE_META[role]?.team === 'evil' && role !== 'oberon') {
-    lines.push({ label: '仲間の悪陣営', playerIds: players.filter(p => p.id !== viewer.id && ROLE_META[p.role]?.team === 'evil' && p.role !== 'oberon').map(p => p.id) });
-  }
+  if (role === 'merlin') lines.push({ label: '見えている悪陣営', playerIds: players.filter(p => ROLE_META[p.role]?.team === 'evil' && p.role !== 'mordred').map(p => p.id) });
+  if (role === 'percival') lines.push({ label: 'マーリン候補', playerIds: shuffle(players.filter(p => p.role === 'merlin' || p.role === 'morgana').map(p => p.id)) });
+  if (ROLE_META[role]?.team === 'evil' && role !== 'oberon') lines.push({ label: '仲間の悪陣営', playerIds: players.filter(p => p.id !== viewer.id && ROLE_META[p.role]?.team === 'evil' && p.role !== 'oberon').map(p => p.id) });
   if (role === 'oberon') lines.push({ label: '特殊情報', text: 'オベロンなので、他の悪陣営は分かりません。' });
   return lines;
 }
 function publicState(room, viewer) {
-  const revealRoles = room.phase === 'gameover';
-  const cfg = room.players.length >= 5 ? MISSION_CONFIG[room.players.length] : null;
+  const returnedToLobby = !!viewer && room.phase === 'rematch' && room.returnedPlayers.has(viewer.id);
+  const effectivePhase = room.phase === 'rematch' ? (returnedToLobby ? 'lobby' : 'gameover') : room.phase;
+  const revealRoles = effectivePhase === 'gameover';
+  const visiblePlayers = returnedToLobby ? room.players.filter(p => room.returnedPlayers.has(p.id)) : room.players;
+  const cfg = visiblePlayers.length >= 5 ? MISSION_CONFIG[visiblePlayers.length] : null;
   return {
-    code: room.code, hostId: room.hostId, createdAt: room.createdAt, phase: room.phase,
-    players: room.players.map(p => ({ id:p.id, name:p.name, connected:!!p.connected, isHost:p.id===room.hostId, role:revealRoles?p.role:undefined, team:revealRoles&&p.role?ROLE_META[p.role].team:undefined })),
-    me: viewer ? { id:viewer.id, name:viewer.name, role:viewer.role||null, roleMeta:viewer.role?ROLE_META[viewer.role]:null, knowledge:viewer.role?roleKnowledge(room,viewer):[] } : null,
+    code: room.code, hostId: room.hostId, createdAt: room.createdAt, phase: effectivePhase,
+    rematchOpen: room.phase === 'rematch', returnedToLobby,
+    players: visiblePlayers.map(p => ({ id:p.id, name:p.name, connected:!!p.connected, isHost:p.id===room.hostId, role:revealRoles?p.role:undefined, team:revealRoles&&p.role?ROLE_META[p.role].team:undefined })),
+    me: viewer ? { id:viewer.id, name:viewer.name, role:effectivePhase==='lobby'?null:(viewer.role||null), roleMeta:effectivePhase==='lobby'?null:(viewer.role?ROLE_META[viewer.role]:null), knowledge:effectivePhase==='lobby'?[]:(viewer.role?roleKnowledge(room,viewer):[]) } : null,
     setup: room.setup, leaderId: room.leaderId, selectedTeam:[...room.selectedTeam], missionIndex:room.missionIndex,
     missionTeamSize: cfg && room.missionIndex < 5 ? cfg.team[room.missionIndex] : null,
-    missionRequires: cfg && room.missionIndex===3 && room.players.length>=7 ? 2 : 1,
+    missionRequires: cfg && room.missionIndex===3 && visiblePlayers.length>=7 ? 2 : 1,
     missions:room.missions, proposalNumber:room.proposalNumber, rejectionCount:room.rejectionCount,
     voteSubmitted:viewer?room.votes.has(viewer.id):false, voteResults:room.voteResults,
     missionSubmitted:viewer?room.missionVotes.has(viewer.id):false, isOnMission:viewer?room.selectedTeam.includes(viewer.id):false,
@@ -106,22 +104,32 @@ function publicState(room, viewer) {
 function sseWrite(res, payload) { try { res.write(`data: ${JSON.stringify(payload)}\n\n`); return true; } catch { return false; } }
 function publish(room) {
   room.updatedAt = Date.now();
-  for (const p of room.players) {
-    if (p.stream) sseWrite(p.stream, { type:'roomState', data:publicState(room,p) });
-  }
+  for (const p of room.players) if (p.stream) sseWrite(p.stream, { type:'roomState', data:publicState(room,p) });
 }
 function log(room,text){room.log.push({at:Date.now(),text});}
 function rotateLeader(room){if(!room.players.length)return; const i=room.players.findIndex(p=>p.id===room.leaderId); room.leaderId=room.players[(i+1+room.players.length)%room.players.length].id;}
-function resetGameFields(room){room.phase='lobby';room.leaderId=null;room.selectedTeam=[];room.missionIndex=0;room.missions=[null,null,null,null,null];room.proposalNumber=0;room.rejectionCount=0;room.votes=new Map();room.voteResults=null;room.missionVotes=new Map();room.winner=null;room.winnerReason=null;room.assassinationTargetId=null;for(const p of room.players)p.role=null;}
-function finish(room,winner,reason){room.phase='gameover';room.winner=winner;room.winnerReason=reason;log(room,`${winner==='good'?'善':'悪'}陣営の勝利：${reason}`);}
-function endGameByHost(room, player){ensureHost(room,player);if(room.phase==='lobby')throw new Error('ゲーム開始前です。');if(room.phase==='gameover')throw new Error('ゲームはすでに終了しています。');room.phase='gameover';room.winner=null;room.winnerReason='ホストがゲームを終了しました。';log(room,`${player.name}（ホスト）がゲームを終了しました。`);}
+function resetGameFields(room){room.phase='lobby';room.returnedPlayers=new Set();room.leaderId=null;room.selectedTeam=[];room.missionIndex=0;room.missions=[null,null,null,null,null];room.proposalNumber=0;room.rejectionCount=0;room.votes=new Map();room.voteResults=null;room.missionVotes=new Map();room.winner=null;room.winnerReason=null;room.assassinationTargetId=null;for(const p of room.players)p.role=null;}
+function finish(room,winner,reason){room.phase='gameover';room.returnedPlayers=new Set();room.winner=winner;room.winnerReason=reason;log(room,`${winner==='good'?'善':'悪'}陣営の勝利：${reason}`);}
+function endGameByHost(room,player){ensureHost(room,player);if(room.phase==='lobby')throw new Error('ゲーム開始前です。');if(room.phase==='gameover'||room.phase==='rematch')throw new Error('ゲームはすでに終了しています。');room.phase='gameover';room.returnedPlayers=new Set();room.winner=null;room.winnerReason='ホストがゲームを終了しました。';log(room,`${player.name}（ホスト）がゲームを終了しました。`);}
 function ensureHost(room,player){if(!player||room.hostId!==player.id)throw new Error('ホストのみ実行できます。');}
+function isLobbyPlayer(room,p){return room.phase==='lobby'||(room.phase==='rematch'&&room.returnedPlayers.has(p.id));}
+function excludeNonReturnedPlayers(room){
+  if(room.phase!=='rematch')return;
+  const excluded=room.players.filter(p=>!room.returnedPlayers.has(p.id));
+  for(const p of excluded){
+    p.removed=true;
+    if(p.disconnectTimer)clearTimeout(p.disconnectTimer);
+    if(p.stream){sseWrite(p.stream,{type:'rematchExcluded'});try{p.stream.end();}catch{}}
+  }
+  room.players=room.players.filter(p=>room.returnedPlayers.has(p.id));
+  room.returnedPlayers=new Set(room.players.map(p=>p.id));
+}
 
 function json(res,status,obj){const body=JSON.stringify(obj);res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Content-Length':Buffer.byteLength(body),'Cache-Control':'no-store'});res.end(body);}
 function readJson(req){return new Promise((resolve,reject)=>{let data='';req.on('data',c=>{data+=c;if(data.length>1_000_000){reject(new Error('Request too large'));req.destroy();}});req.on('end',()=>{try{resolve(data?JSON.parse(data):{});}catch{reject(new Error('Invalid JSON'));}});req.on('error',reject);});}
 function newRoom(name,token){
   const code=makeCode(); const p={id:crypto.randomUUID(),token,name,connected:false,role:null,stream:null,disconnectTimer:null,removed:false};
-  const room={code,hostId:p.id,players:[p],phase:'lobby',setup:{preset:'standard',custom:{merlin:true,percival:true,assassin:true,morgana:true,mordred:true,oberon:true}},leaderId:null,selectedTeam:[],missionIndex:0,missions:[null,null,null,null,null],proposalNumber:0,rejectionCount:0,votes:new Map(),voteResults:null,missionVotes:new Map(),winner:null,winnerReason:null,assassinationTargetId:null,log:[],createdAt:Date.now(),updatedAt:Date.now()};
+  const room={code,hostId:p.id,players:[p],phase:'lobby',returnedPlayers:new Set(),setup:{preset:'standard',custom:{merlin:true,percival:true,assassin:true,morgana:true,mordred:true,oberon:true}},leaderId:null,selectedTeam:[],missionIndex:0,missions:[null,null,null,null,null],proposalNumber:0,rejectionCount:0,votes:new Map(),voteResults:null,missionVotes:new Map(),winner:null,winnerReason:null,assassinationTargetId:null,log:[],createdAt:Date.now(),updatedAt:Date.now()};
   rooms.set(code,room); log(room,`${name} が部屋を作成しました。`); return room;
 }
 
@@ -152,12 +160,14 @@ async function handleApi(req,res,url){
       const b=await readJson(req); const room=rooms.get(String(b.code||'').toUpperCase()); if(!room)throw new Error('部屋が見つかりません。'); const p=getPlayer(room,String(b.token||'')); if(!p)throw new Error('参加情報が無効です。');
       const type=String(b.type||''), x=b.payload||{};
       if(type==='updateSetup'){
-        ensureHost(room,p); if(room.phase!=='lobby')throw new Error('ロビーでのみ変更できます。'); const s=x.setup||{}; const preset=['standard','simple','custom'].includes(s.preset)?s.preset:'standard'; room.setup={preset,custom:{merlin:!!s.custom?.merlin,percival:!!s.custom?.percival,assassin:!!s.custom?.assassin,morgana:!!s.custom?.morgana,mordred:!!s.custom?.mordred,oberon:!!s.custom?.oberon}};
+        ensureHost(room,p); if(!isLobbyPlayer(room,p))throw new Error('ロビーでのみ変更できます。'); const s=x.setup||{}; const preset=['standard','simple','custom'].includes(s.preset)?s.preset:'standard'; room.setup={preset,custom:{merlin:!!s.custom?.merlin,percival:!!s.custom?.percival,assassin:!!s.custom?.assassin,morgana:!!s.custom?.morgana,mordred:!!s.custom?.mordred,oberon:!!s.custom?.oberon}};
       } else if(type==='removePlayer'){
-        ensureHost(room,p); if(room.phase!=='lobby')throw new Error('ロビーでのみ削除できます。'); if(x.playerId===room.hostId)throw new Error('ホスト自身は削除できません。'); const t=room.players.find(q=>q.id===x.playerId); if(t){t.removed=true;if(t.disconnectTimer)clearTimeout(t.disconnectTimer);if(t.stream){sseWrite(t.stream,{type:'kicked'});try{t.stream.end();}catch{}}room.players=room.players.filter(q=>q.id!==t.id);log(room,`${t.name} を部屋から削除しました。`);}
+        ensureHost(room,p); if(!isLobbyPlayer(room,p))throw new Error('ロビーでのみ削除できます。'); if(x.playerId===room.hostId)throw new Error('ホスト自身は削除できません。'); const t=room.players.find(q=>q.id===x.playerId); if(t){t.removed=true;if(t.disconnectTimer)clearTimeout(t.disconnectTimer);if(t.stream){sseWrite(t.stream,{type:'kicked'});try{t.stream.end();}catch{}}room.players=room.players.filter(q=>q.id!==t.id);room.returnedPlayers.delete(t.id);log(room,`${t.name} を部屋から削除しました。`);}
       } else if(type==='startGame'){
-        ensureHost(room,p); if(room.phase!=='lobby')throw new Error('すでにゲーム中です。'); const n=room.players.length;if(!MISSION_CONFIG[n])throw new Error('5〜10人そろうと開始できます。'); if(room.players.some(q=>!q.connected))throw new Error('切断中のプレイヤーがいます。削除するか再接続を待ってください。');
-        let roles=room.setup.preset==='simple'?simpleRoles(n):room.setup.preset==='custom'?customRoles(n,room.setup.custom):defaultRoles(n);roles=shuffle(roles);room.players.forEach((q,i)=>q.role=roles[i]);room.players=shuffle(room.players);room.leaderId=room.players[crypto.randomInt(room.players.length)].id;room.phase='team';room.selectedTeam=[];room.missionIndex=0;room.missions=[null,null,null,null,null];room.proposalNumber=1;room.rejectionCount=0;room.votes=new Map();room.voteResults=null;room.missionVotes=new Map();room.winner=null;room.winnerReason=null;room.assassinationTargetId=null;room.log=[];log(room,'ゲームを開始しました。');log(room,`${room.players.find(q=>q.id===room.leaderId).name} が最初のリーダーです。`);
+        ensureHost(room,p); if(!isLobbyPlayer(room,p))throw new Error('ロビーから開始してください。');
+        if(room.phase==='rematch')excludeNonReturnedPlayers(room);
+        const n=room.players.length;if(!MISSION_CONFIG[n])throw new Error('ロビーに戻った参加者が5〜10人そろうと開始できます。'); if(room.players.some(q=>!q.connected))throw new Error('切断中のプレイヤーがいます。削除するか再接続を待ってください。');
+        let roles=room.setup.preset==='simple'?simpleRoles(n):room.setup.preset==='custom'?customRoles(n,room.setup.custom):defaultRoles(n);roles=shuffle(roles);room.players.forEach((q,i)=>q.role=roles[i]);room.players=shuffle(room.players);room.leaderId=room.players[crypto.randomInt(room.players.length)].id;room.phase='team';room.returnedPlayers=new Set();room.selectedTeam=[];room.missionIndex=0;room.missions=[null,null,null,null,null];room.proposalNumber=1;room.rejectionCount=0;room.votes=new Map();room.voteResults=null;room.missionVotes=new Map();room.winner=null;room.winnerReason=null;room.assassinationTargetId=null;room.log=[];log(room,'ゲームを開始しました。');log(room,`${room.players.find(q=>q.id===room.leaderId).name} が最初のリーダーです。`);
       } else if(type==='proposeTeam'){
         if(room.phase!=='team')throw new Error('現在はチーム編成フェーズではありません。'); if(p.id!==room.leaderId)throw new Error('現在のリーダーのみ編成できます。'); const required=MISSION_CONFIG[room.players.length].team[room.missionIndex]; const unique=[...new Set(Array.isArray(x.playerIds)?x.playerIds:[])]; if(unique.length!==required)throw new Error(`任務メンバーを ${required} 人選んでください。`); if(unique.some(id=>!room.players.some(q=>q.id===id)))throw new Error('無効なプレイヤーが含まれています。'); room.selectedTeam=unique;room.votes=new Map();room.voteResults=null;room.phase='vote';log(room,`${p.name} が任務チームを提案しました。`);
       } else if(type==='voteTeam'){
@@ -169,11 +179,14 @@ async function handleApi(req,res,url){
       } else if(type==='endGame'){
         endGameByHost(room,p);
       } else if(type==='restartGame'){
-        ensureHost(room,p);resetGameFields(room);room.log=[];log(room,'ロビーに戻りました。');
+        ensureHost(room,p); if(room.phase!=='gameover')throw new Error('ゲーム終了後に実行できます。'); room.phase='rematch'; room.returnedPlayers=new Set([p.id]); log(room,'ホストが再戦ロビーを開きました。');
+      } else if(type==='returnToLobby'){
+        if(room.phase!=='rematch')throw new Error('ホストが再戦ロビーを開くまで戻れません。'); room.returnedPlayers.add(p.id); log(room,`${p.name} がロビーに戻りました。`);
+        if(room.returnedPlayers.size===room.players.length){resetGameFields(room);room.log=[];log(room,'全員がロビーに戻りました。');}
       } else if(type==='leaveRoom'){
-        if(room.phase!=='lobby')throw new Error('ゲーム中は退出できません。ブラウザを閉じた場合は同じ端末から再接続できます。');
-        const leavingName=p.name; p.removed=true; if(p.disconnectTimer)clearTimeout(p.disconnectTimer); if(p.stream){try{p.stream.end();}catch{}} room.players=room.players.filter(q=>q.id!==p.id);
-        if(room.hostId===p.id && room.players.length)room.hostId=room.players[0].id;
+        if(!isLobbyPlayer(room,p))throw new Error('ゲーム中は退出できません。ブラウザを閉じた場合は同じ端末から再接続できます。');
+        const leavingName=p.name; p.removed=true; if(p.disconnectTimer)clearTimeout(p.disconnectTimer); if(p.stream){try{p.stream.end();}catch{}} room.players=room.players.filter(q=>q.id!==p.id);room.returnedPlayers.delete(p.id);
+        if(room.hostId===p.id && room.players.length){const nextHost=room.players.find(q=>room.phase!=='rematch'||room.returnedPlayers.has(q.id))||room.players[0];room.hostId=nextHost.id;}
         if(room.players.length)log(room,`${leavingName} が退出しました。`); else rooms.delete(room.code);
       } else throw new Error('不明な操作です。');
       publish(room); return json(res,200,{ok:true});
