@@ -3,6 +3,7 @@ services:
     name: avalon-online-private
     runtime: node
     plan: free
+    branch: server
     buildCommand: echo "No build step"
     startCommand: node server.js
     healthCheckPath: /health
