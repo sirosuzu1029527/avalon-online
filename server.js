@@ -198,7 +198,7 @@ async function handleApi(req,res,url){
 const MIME={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.ico':'image/x-icon'};
 function serveStatic(req,res,url){
   let rel=decodeURIComponent(url.pathname); if(rel==='/')rel='/index.html'; const file=path.normalize(path.join(PUBLIC_DIR,rel)); if(!file.startsWith(PUBLIC_DIR)){res.writeHead(403);return res.end('Forbidden');}
-  fs.stat(file,(err,st)=>{if(err||!st.isFile()){const index=path.join(PUBLIC_DIR,'index.html');res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'});return fs.createReadStream(index).pipe(res);}res.writeHead(200,{'Content-Type':MIME[path.extname(file)]||'application/octet-stream','Cache-Control':path.extname(file)==='.html'?'no-cache':'public, max-age=3600'});fs.createReadStream(file).pipe(res);});
+  fs.stat(file,(err,st)=>{if(err||!st.isFile()){const index=path.join(PUBLIC_DIR,'index.html');res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-cache'});return fs.createReadStream(index).pipe(res);}res.writeHead(200,{'Content-Type':MIME[path.extname(file)]||'application/octet-stream','Cache-Control':'no-cache'});fs.createReadStream(file).pipe(res);});
 }
 
 const server=http.createServer((req,res)=>{
