@@ -37,6 +37,19 @@ function roleName(role) {
 }
 function isHost() { return state?.hostId === state?.me?.id; }
 function isLeader() { return state?.leaderId === state?.me?.id; }
+function renderHostEndGameControl() {
+  const button = $('endGameBtn');
+  if (!button) return;
+  const visible = state && isHost() && !['lobby', 'gameover'].includes(state.phase);
+  button.classList.toggle('hidden', !visible);
+  if (!visible) {
+    button.onclick = null;
+    return;
+  }
+  button.onclick = () => {
+    if (confirm('現在のゲームを終了しますか？\n全員の役職が公開されます。')) action('endGame');
+  };
+}
 
 async function post(path, body) {
   const r = await fetch(path, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
@@ -137,7 +150,7 @@ boot();
 function render() {
   if (!state) return;
   $('roomCode').textContent = state.code;
-  renderPhase(); renderIdentity(); renderPlayers(); renderMissions(); renderMain(); renderLog();
+  renderPhase(); renderIdentity(); renderPlayers(); renderMissions(); renderMain(); renderHostEndGameControl(); renderLog();
 }
 function renderPhase() {
   const leader = state.leaderId ? playerName(state.leaderId) : null;

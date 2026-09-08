@@ -119,6 +119,7 @@ function excludeNonReturnedPlayers(room){
   for(const p of excluded){
     p.removed=true;
     if(p.disconnectTimer)clearTimeout(p.disconnectTimer);
+    if(p.hostTransferTimer)clearTimeout(p.hostTransferTimer);
     if(p.stream){sseWrite(p.stream,{type:'rematchExcluded'});try{p.stream.end();}catch{}}
   }
   room.players=room.players.filter(p=>room.returnedPlayers.has(p.id));
@@ -128,7 +129,7 @@ function excludeNonReturnedPlayers(room){
 function json(res,status,obj){const body=JSON.stringify(obj);res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Content-Length':Buffer.byteLength(body),'Cache-Control':'no-store'});res.end(body);}
 function readJson(req){return new Promise((resolve,reject)=>{let data='';req.on('data',c=>{data+=c;if(data.length>1_000_000){reject(new Error('Request too large'));req.destroy();}});req.on('end',()=>{try{resolve(data?JSON.parse(data):{});}catch{reject(new Error('Invalid JSON'));}});req.on('error',reject);});}
 function newRoom(name,token){
-  const code=makeCode(); const p={id:crypto.randomUUID(),token,name,connected:false,role:null,stream:null,disconnectTimer:null,removed:false};
+  const code=makeCode(); const p={id:crypto.randomUUID(),token,name,connected:false,role:null,stream:null,disconnectTimer:null,hostTransferTimer:null,removed:false};
   const room={code,hostId:p.id,players:[p],phase:'lobby',returnedPlayers:new Set(),setup:{preset:'standard',custom:{merlin:true,percival:true,assassin:true,morgana:true,mordred:true,oberon:true}},leaderId:null,selectedTeam:[],missionIndex:0,missions:[null,null,null,null,null],proposalNumber:0,rejectionCount:0,votes:new Map(),voteResults:null,missionVotes:new Map(),winner:null,winnerReason:null,assassinationTargetId:null,log:[],createdAt:Date.now(),updatedAt:Date.now()};
   rooms.set(code,room); log(room,`${name} が部屋を作成しました。`); return room;
 }
@@ -144,17 +145,42 @@ async function handleApi(req,res,url){
       const room=rooms.get(code); if(!room)throw new Error('部屋が見つかりません。コードを確認してください。');
       let p=getPlayer(room,token);
       if(p){ if(name)p.name=name; }
-      else { if(room.phase!=='lobby')throw new Error('ゲーム開始後は新規参加できません。'); if(room.players.length>=10)throw new Error('この版では最大10人です。'); if(!name)throw new Error('表示名を入力してください。'); p={id:crypto.randomUUID(),token,name,connected:false,role:null,stream:null,disconnectTimer:null,removed:false}; room.players.push(p); log(room,`${name} が参加しました。`); }
+      else { if(room.phase!=='lobby')throw new Error('ゲーム開始後は新規参加できません。'); if(room.players.length>=10)throw new Error('この版では最大10人です。'); if(!name)throw new Error('表示名を入力してください。'); p={id:crypto.randomUUID(),token,name,connected:false,role:null,stream:null,disconnectTimer:null,hostTransferTimer:null,removed:false}; room.players.push(p); log(room,`${name} が参加しました。`); }
       room.updatedAt=Date.now(); publish(room); return json(res,200,{ok:true,code,token});
     }
     if(req.method==='GET' && url.pathname==='/api/events'){
       const code=String(url.searchParams.get('code')||'').toUpperCase(), token=String(url.searchParams.get('token')||'');
       const room=rooms.get(code), p=room&&getPlayer(room,token); if(!room||!p){res.writeHead(404);return res.end();}
       res.writeHead(200,{'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-cache, no-transform','Connection':'keep-alive','X-Accel-Buffering':'no'}); res.write(': connected\n\n');
-      if(p.disconnectTimer){clearTimeout(p.disconnectTimer);p.disconnectTimer=null;} if(p.stream&&p.stream!==res){try{p.stream.end();}catch{}}
+      if(p.disconnectTimer){clearTimeout(p.disconnectTimer);p.disconnectTimer=null;}
+      if(p.hostTransferTimer){clearTimeout(p.hostTransferTimer);p.hostTransferTimer=null;}
+      if(p.stream&&p.stream!==res){try{p.stream.end();}catch{}}
       p.stream=res; p.connected=true; sseWrite(res,{type:'roomState',data:publicState(room,p)}); publish(room);
       const heartbeat=setInterval(()=>{try{res.write(': ping\n\n');}catch{}},20000);
-      req.on('close',()=>{clearInterval(heartbeat); if(p.removed)return; if(p.stream===res)p.stream=null; p.disconnectTimer=setTimeout(()=>{if(!p.stream&&!p.removed){p.connected=false;log(room,`${p.name} が切断しました。再接続を待っています。`);publish(room);}},3000);}); return;
+      req.on('close',()=>{
+        clearInterval(heartbeat);
+        if(p.removed)return;
+        if(p.stream===res)p.stream=null;
+        p.disconnectTimer=setTimeout(()=>{
+          if(!p.stream&&!p.removed){
+            p.connected=false;
+            log(room,`${p.name} が切断しました。再接続を待っています。`);
+            publish(room);
+          }
+        },3000);
+        if(room.hostId===p.id){
+          p.hostTransferTimer=setTimeout(()=>{
+            p.hostTransferTimer=null;
+            if(p.stream||p.removed||room.hostId!==p.id)return;
+            const nextHost=room.players.find(q=>q.id!==p.id&&q.connected&&!q.removed);
+            if(nextHost){
+              room.hostId=nextHost.id;
+              log(room,`${p.name} の切断が10秒続いたため、${nextHost.name} にホストを移譲しました。`);
+              publish(room);
+            }
+          },10000);
+        }
+      }); return;
     }
     if(req.method==='POST' && url.pathname==='/api/action'){
       const b=await readJson(req); const room=rooms.get(String(b.code||'').toUpperCase()); if(!room)throw new Error('部屋が見つかりません。'); const p=getPlayer(room,String(b.token||'')); if(!p)throw new Error('参加情報が無効です。');
@@ -162,7 +188,7 @@ async function handleApi(req,res,url){
       if(type==='updateSetup'){
         ensureHost(room,p); if(!isLobbyPlayer(room,p))throw new Error('ロビーでのみ変更できます。'); const s=x.setup||{}; const preset=['standard','simple','custom'].includes(s.preset)?s.preset:'standard'; room.setup={preset,custom:{merlin:!!s.custom?.merlin,percival:!!s.custom?.percival,assassin:!!s.custom?.assassin,morgana:!!s.custom?.morgana,mordred:!!s.custom?.mordred,oberon:!!s.custom?.oberon}};
       } else if(type==='removePlayer'){
-        ensureHost(room,p); if(!isLobbyPlayer(room,p))throw new Error('ロビーでのみ削除できます。'); if(x.playerId===room.hostId)throw new Error('ホスト自身は削除できません。'); const t=room.players.find(q=>q.id===x.playerId); if(t){t.removed=true;if(t.disconnectTimer)clearTimeout(t.disconnectTimer);if(t.stream){sseWrite(t.stream,{type:'kicked'});try{t.stream.end();}catch{}}room.players=room.players.filter(q=>q.id!==t.id);room.returnedPlayers.delete(t.id);log(room,`${t.name} を部屋から削除しました。`);}
+        ensureHost(room,p); if(!isLobbyPlayer(room,p))throw new Error('ロビーでのみ削除できます。'); if(x.playerId===room.hostId)throw new Error('ホスト自身は削除できません。'); const t=room.players.find(q=>q.id===x.playerId); if(t){t.removed=true;if(t.disconnectTimer)clearTimeout(t.disconnectTimer);if(t.hostTransferTimer)clearTimeout(t.hostTransferTimer);if(t.stream){sseWrite(t.stream,{type:'kicked'});try{t.stream.end();}catch{}}room.players=room.players.filter(q=>q.id!==t.id);room.returnedPlayers.delete(t.id);log(room,`${t.name} を部屋から削除しました。`);}
       } else if(type==='startGame'){
         ensureHost(room,p); if(!isLobbyPlayer(room,p))throw new Error('ロビーから開始してください。');
         if(room.phase==='rematch')excludeNonReturnedPlayers(room);
@@ -185,7 +211,7 @@ async function handleApi(req,res,url){
         if(room.returnedPlayers.size===room.players.length){resetGameFields(room);room.log=[];log(room,'全員がロビーに戻りました。');}
       } else if(type==='leaveRoom'){
         if(!isLobbyPlayer(room,p))throw new Error('ゲーム中は退出できません。ブラウザを閉じた場合は同じ端末から再接続できます。');
-        const leavingName=p.name; p.removed=true; if(p.disconnectTimer)clearTimeout(p.disconnectTimer); if(p.stream){try{p.stream.end();}catch{}} room.players=room.players.filter(q=>q.id!==p.id);room.returnedPlayers.delete(p.id);
+        const leavingName=p.name; p.removed=true; if(p.disconnectTimer)clearTimeout(p.disconnectTimer); if(p.hostTransferTimer)clearTimeout(p.hostTransferTimer); if(p.stream){try{p.stream.end();}catch{}} room.players=room.players.filter(q=>q.id!==p.id);room.returnedPlayers.delete(p.id);
         if(room.hostId===p.id && room.players.length){const nextHost=room.players.find(q=>room.phase!=='rematch'||room.returnedPlayers.has(q.id))||room.players[0];room.hostId=nextHost.id;}
         if(room.players.length)log(room,`${leavingName} が退出しました。`); else rooms.delete(room.code);
       } else throw new Error('不明な操作です。');
