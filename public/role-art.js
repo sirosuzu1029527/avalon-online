@@ -33,7 +33,7 @@
   async function loadBase64Image(path, cssVariable) {
     const r = await fetch(path);
     if (!r.ok) throw new Error(`artwork load failed: ${path}`);
-    const base64 = (await r.text()).trim();
+    const base64 = (await r.text()).replace(/\s+/g, '');
     document.documentElement.style.setProperty(cssVariable, `url("data:image/webp;base64,${base64}")`);
   }
   function ensureSprite() {
