@@ -1,0 +1,22 @@
+.visual-mode-btn{min-width:112px}
+.home-visual-mode-btn{margin-top:12px}
+html.illustrated-home body{
+  background-color:#0c111c;
+  background-image:
+    linear-gradient(rgba(6,10,17,.12),rgba(6,10,17,.30)),
+    var(--homepage-bg-image,none);
+  background-position:center center,center center;
+  background-size:cover,cover;
+  background-attachment:fixed,fixed;
+  background-repeat:no-repeat,no-repeat;
+}
+html.illustrated-home .bg{background:none}
+html.illustrated-home .hero-panel{background:linear-gradient(180deg,rgba(20,27,38,.90),rgba(11,16,25,.94));backdrop-filter:blur(2px)}
+.role-art{background-image:var(--role-sprite-image,none);background-size:400% 200%;background-repeat:no-repeat;background-color:#0b111b;border:1px solid #3a4656;border-radius:6px;aspect-ratio:3/4;box-shadow:0 8px 24px rgba(0,0,0,.28)}
+.role-art-merlin{background-position:0% 0%}.role-art-percival{background-position:33.333% 0%}.role-art-loyal{background-position:66.667% 0%}.role-art-assassin{background-position:100% 0%}.role-art-morgana{background-position:0% 100%}.role-art-mordred{background-position:33.333% 100%}.role-art-oberon{background-position:66.667% 100%}.role-art-minion{background-position:100% 100%}
+.identity-art{width:min(100%,180px);margin:0 auto 13px}
+.role-reference-illustrated{display:grid;grid-template-columns:58px minmax(0,1fr);gap:10px;align-items:start}
+.role-reference-art{width:58px}
+.role-reference-copy{min-width:0}
+.reveal-art{width:min(100%,120px);margin:0 auto 9px}
+@media(max-width:440px){.identity-art{width:min(100%,160px)}.role-reference-illustrated{grid-template-columns:50px minmax(0,1fr)}.role-reference-art{width:50px}.visual-mode-btn{min-width:auto}}
