@@ -3,8 +3,8 @@
 html.illustrated-home body{
   background-color:#0c111c;
   background-image:
-    linear-gradient(rgba(6,10,17,.12),rgba(6,10,17,.30)),
-    var(--homepage-bg-image,none);
+    linear-gradient(rgba(6,10,17,.16),rgba(6,10,17,.34)),
+    url("/images/homepage-background.jpg");
   background-position:center center,center center;
   background-size:cover,cover;
   background-attachment:fixed,fixed;

@@ -1,14 +1,12 @@
 (() => {
   const STORAGE_KEY = 'avalonVisualMode';
   const SPRITE_PATH = '/images/role-sprite-small.webp.b64.txt';
-  const HOME_BG_PATH = '/images/homepage-background-small.webp.b64.txt';
   const ROLE_BY_NAME = {
     'マーリン':'merlin','パーシヴァル':'percival','アーサーの忠臣':'loyal','暗殺者':'assassin',
     'モルガナ':'morgana','モードレッド':'mordred','オベロン':'oberon','モードレッドの手下':'minion'
   };
   const ROLE_NAMES_LONGEST_FIRST = Object.entries(ROLE_BY_NAME).sort((a, b) => b[0].length - a[0].length);
   let spritePromise = null;
-  let homeBackgroundPromise = null;
 
   function visualMode() {
     return localStorage.getItem(STORAGE_KEY) === 'illustrated' ? 'illustrated' : 'simple';
@@ -47,26 +45,12 @@
     }
     return spritePromise;
   }
-  function ensureHomeBackground() {
-    if (document.documentElement.style.getPropertyValue('--homepage-bg-image')) return Promise.resolve();
-    if (!homeBackgroundPromise) {
-      homeBackgroundPromise = loadBase64Image(HOME_BG_PATH, '--homepage-bg-image').catch(err => {
-        homeBackgroundPromise = null;
-        console.error(err);
-        toast('背景イラストの読み込みに失敗しました。');
-      });
-    }
-    return homeBackgroundPromise;
-  }
-  async function ensureVisualAssets() {
-    await Promise.all([ensureSprite(), ensureHomeBackground()]);
-  }
   async function toggleVisualMode() {
     const next = illustrated() ? 'simple' : 'illustrated';
     localStorage.setItem(STORAGE_KEY, next);
     syncVisualClass();
     syncToggleButtons();
-    if (next === 'illustrated') await ensureVisualAssets();
+    if (next === 'illustrated') await ensureSprite();
     if (state) render();
   }
   function configureToggleButton(button) {
@@ -144,5 +128,5 @@
 
   syncVisualClass();
   syncToggleButtons();
-  if (illustrated()) ensureVisualAssets();
+  if (illustrated()) ensureSprite();
 })();
