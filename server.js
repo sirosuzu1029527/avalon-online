@@ -86,6 +86,8 @@ function publicState(room, viewer) {
   const revealRoles = effectivePhase === 'gameover';
   const visiblePlayers = returnedToLobby ? room.players.filter(p => room.returnedPlayers.has(p.id)) : room.players;
   const cfg = visiblePlayers.length >= 5 ? MISSION_CONFIG[visiblePlayers.length] : null;
+  const voteApprovals = room.voteResults ? room.voteResults.filter(v => v.approve).length : 0;
+  const voteRejects = room.voteResults ? room.voteResults.length - voteApprovals : 0;
   return {
     code: room.code, hostId: room.hostId, createdAt: room.createdAt, phase: effectivePhase,
     rematchOpen: room.phase === 'rematch', returnedToLobby,
@@ -96,7 +98,13 @@ function publicState(room, viewer) {
     missionRequires: cfg && room.missionIndex===3 && visiblePlayers.length>=7 ? 2 : 1,
     missions:room.missions, proposalNumber:room.proposalNumber, rejectionCount:room.rejectionCount,
     voteSubmitted:viewer?room.votes.has(viewer.id):false, voteResults:room.voteResults,
+    voteOutcome: room.phase==='vote_result' && room.voteResults ? { approvals:voteApprovals, rejects:voteRejects, approved:voteApprovals>voteRejects } : null,
     missionSubmitted:viewer?room.missionVotes.has(viewer.id):false, isOnMission:viewer?room.selectedTeam.includes(viewer.id):false,
+    missionOutcome: room.phase==='mission_result' ? room.missions[room.missionIndex] : null,
+    resultConfirmed:viewer?room.confirmations.has(viewer.id):false,
+    resultConfirmationCount:room.confirmations.size,
+    resultConfirmationTotal:room.players.length,
+    resultUnconfirmedPlayerIds:viewer&&viewer.id===room.hostId?room.players.filter(p=>!room.confirmations.has(p.id)).map(p=>p.id):[],
     goodMissionSuccesses:room.missions.filter(m=>m&&m.success).length, evilMissionSuccesses:room.missions.filter(m=>m&&!m.success).length,
     winner:room.winner, winnerReason:room.winnerReason, log:room.log.slice(-40), assassinationTargetId:room.assassinationTargetId||null
   };
@@ -108,11 +116,35 @@ function publish(room) {
 }
 function log(room,text){room.log.push({at:Date.now(),text});}
 function rotateLeader(room){if(!room.players.length)return; const i=room.players.findIndex(p=>p.id===room.leaderId); room.leaderId=room.players[(i+1+room.players.length)%room.players.length].id;}
-function resetGameFields(room){room.phase='lobby';room.returnedPlayers=new Set();room.leaderId=null;room.selectedTeam=[];room.missionIndex=0;room.missions=[null,null,null,null,null];room.proposalNumber=0;room.rejectionCount=0;room.votes=new Map();room.voteResults=null;room.missionVotes=new Map();room.winner=null;room.winnerReason=null;room.assassinationTargetId=null;for(const p of room.players)p.role=null;}
-function finish(room,winner,reason){room.phase='gameover';room.returnedPlayers=new Set();room.winner=winner;room.winnerReason=reason;log(room,`${winner==='good'?'善':'悪'}陣営の勝利：${reason}`);}
-function endGameByHost(room,player){ensureHost(room,player);if(room.phase==='lobby')throw new Error('ゲーム開始前です。');if(room.phase==='gameover'||room.phase==='rematch')throw new Error('ゲームはすでに終了しています。');room.phase='gameover';room.returnedPlayers=new Set();room.winner=null;room.winnerReason='ホストがゲームを終了しました。';log(room,`${player.name}（ホスト）がゲームを終了しました。`);}
+function clearResultState(room){room.confirmations=new Set();room.resultNextPhase=null;}
+function resetGameFields(room){room.phase='lobby';room.returnedPlayers=new Set();room.leaderId=null;room.selectedTeam=[];room.missionIndex=0;room.missions=[null,null,null,null,null];room.proposalNumber=0;room.rejectionCount=0;room.votes=new Map();room.voteResults=null;room.missionVotes=new Map();clearResultState(room);room.winner=null;room.winnerReason=null;room.assassinationTargetId=null;for(const p of room.players)p.role=null;}
+function finish(room,winner,reason){room.phase='gameover';room.returnedPlayers=new Set();clearResultState(room);room.winner=winner;room.winnerReason=reason;log(room,`${winner==='good'?'善':'悪'}陣営の勝利：${reason}`);}
+function endGameByHost(room,player){ensureHost(room,player);if(room.phase==='lobby')throw new Error('ゲーム開始前です。');if(room.phase==='gameover'||room.phase==='rematch')throw new Error('ゲームはすでに終了しています。');room.phase='gameover';room.returnedPlayers=new Set();clearResultState(room);room.winner=null;room.winnerReason='ホストがゲームを終了しました。';log(room,`${player.name}（ホスト）がゲームを終了しました。`);}
 function ensureHost(room,player){if(!player||room.hostId!==player.id)throw new Error('ホストのみ実行できます。');}
 function isLobbyPlayer(room,p){return room.phase==='lobby'||(room.phase==='rematch'&&room.returnedPlayers.has(p.id));}
+function isResultPhase(room){return room.phase==='vote_result'||room.phase==='mission_result';}
+function beginResultPhase(room,phase,nextPhase){room.phase=phase;room.confirmations=new Set();room.resultNextPhase=nextPhase;}
+function advanceResultPhase(room){
+  if(!isResultPhase(room))throw new Error('現在は結果確認フェーズではありません。');
+  const next=room.resultNextPhase;
+  clearResultState(room);
+  if(next==='mission'){
+    room.phase='mission';room.missionVotes=new Map();room.rejectionCount=0;return;
+  }
+  if(next==='team_after_reject'){
+    rotateLeader(room);room.proposalNumber++;room.selectedTeam=[];room.votes=new Map();room.voteResults=null;room.phase='team';return;
+  }
+  if(next==='gameover_rejections'){finish(room,'evil','5回連続でチーム編成が否認された');return;}
+  if(next==='team_after_mission'){
+    room.missionIndex++;room.selectedTeam=[];room.missionVotes=new Map();room.votes=new Map();room.voteResults=null;room.proposalNumber++;rotateLeader(room);room.phase='team';return;
+  }
+  if(next==='assassination'){
+    room.phase='assassination';room.selectedTeam=[];log(room,'善陣営が任務を3回成功。暗殺フェーズに移ります。');return;
+  }
+  if(next==='gameover_evil_missions'){finish(room,'evil','任務を3回失敗させた');return;}
+  if(next==='gameover_good_missions'){finish(room,'good','任務を3回成功させた');return;}
+  throw new Error('次のフェーズが不正です。');
+}
 function excludeNonReturnedPlayers(room){
   if(room.phase!=='rematch')return;
   const excluded=room.players.filter(p=>!room.returnedPlayers.has(p.id));
@@ -130,7 +162,7 @@ function json(res,status,obj){const body=JSON.stringify(obj);res.writeHead(statu
 function readJson(req){return new Promise((resolve,reject)=>{let data='';req.on('data',c=>{data+=c;if(data.length>1_000_000){reject(new Error('Request too large'));req.destroy();}});req.on('end',()=>{try{resolve(data?JSON.parse(data):{});}catch{reject(new Error('Invalid JSON'));}});req.on('error',reject);});}
 function newRoom(name,token){
   const code=makeCode(); const p={id:crypto.randomUUID(),token,name,connected:false,role:null,stream:null,disconnectTimer:null,hostTransferTimer:null,removed:false};
-  const room={code,hostId:p.id,players:[p],phase:'lobby',returnedPlayers:new Set(),setup:{preset:'standard',custom:{merlin:true,percival:true,assassin:true,morgana:true,mordred:true,oberon:true}},leaderId:null,selectedTeam:[],missionIndex:0,missions:[null,null,null,null,null],proposalNumber:0,rejectionCount:0,votes:new Map(),voteResults:null,missionVotes:new Map(),winner:null,winnerReason:null,assassinationTargetId:null,log:[],createdAt:Date.now(),updatedAt:Date.now()};
+  const room={code,hostId:p.id,players:[p],phase:'lobby',returnedPlayers:new Set(),setup:{preset:'standard',custom:{merlin:true,percival:true,assassin:true,morgana:true,mordred:true,oberon:true}},leaderId:null,selectedTeam:[],missionIndex:0,missions:[null,null,null,null,null],proposalNumber:0,rejectionCount:0,votes:new Map(),voteResults:null,missionVotes:new Map(),confirmations:new Set(),resultNextPhase:null,winner:null,winnerReason:null,assassinationTargetId:null,log:[],createdAt:Date.now(),updatedAt:Date.now()};
   rooms.set(code,room); log(room,`${name} が部屋を作成しました。`); return room;
 }
 
@@ -193,13 +225,17 @@ async function handleApi(req,res,url){
         ensureHost(room,p); if(!isLobbyPlayer(room,p))throw new Error('ロビーから開始してください。');
         if(room.phase==='rematch')excludeNonReturnedPlayers(room);
         const n=room.players.length;if(!MISSION_CONFIG[n])throw new Error('ロビーに戻った参加者が5〜10人そろうと開始できます。'); if(room.players.some(q=>!q.connected))throw new Error('切断中のプレイヤーがいます。削除するか再接続を待ってください。');
-        let roles=room.setup.preset==='simple'?simpleRoles(n):room.setup.preset==='custom'?customRoles(n,room.setup.custom):defaultRoles(n);roles=shuffle(roles);room.players.forEach((q,i)=>q.role=roles[i]);room.players=shuffle(room.players);room.leaderId=room.players[crypto.randomInt(room.players.length)].id;room.phase='team';room.returnedPlayers=new Set();room.selectedTeam=[];room.missionIndex=0;room.missions=[null,null,null,null,null];room.proposalNumber=1;room.rejectionCount=0;room.votes=new Map();room.voteResults=null;room.missionVotes=new Map();room.winner=null;room.winnerReason=null;room.assassinationTargetId=null;room.log=[];log(room,'ゲームを開始しました。');log(room,`${room.players.find(q=>q.id===room.leaderId).name} が最初のリーダーです。`);
+        let roles=room.setup.preset==='simple'?simpleRoles(n):room.setup.preset==='custom'?customRoles(n,room.setup.custom):defaultRoles(n);roles=shuffle(roles);room.players.forEach((q,i)=>q.role=roles[i]);room.players=shuffle(room.players);room.leaderId=room.players[crypto.randomInt(room.players.length)].id;room.phase='team';room.returnedPlayers=new Set();room.selectedTeam=[];room.missionIndex=0;room.missions=[null,null,null,null,null];room.proposalNumber=1;room.rejectionCount=0;room.votes=new Map();room.voteResults=null;room.missionVotes=new Map();clearResultState(room);room.winner=null;room.winnerReason=null;room.assassinationTargetId=null;room.log=[];log(room,'ゲームを開始しました。');log(room,`${room.players.find(q=>q.id===room.leaderId).name} が最初のリーダーです。`);
       } else if(type==='proposeTeam'){
         if(room.phase!=='team')throw new Error('現在はチーム編成フェーズではありません。'); if(p.id!==room.leaderId)throw new Error('現在のリーダーのみ編成できます。'); const required=MISSION_CONFIG[room.players.length].team[room.missionIndex]; const unique=[...new Set(Array.isArray(x.playerIds)?x.playerIds:[])]; if(unique.length!==required)throw new Error(`任務メンバーを ${required} 人選んでください。`); if(unique.some(id=>!room.players.some(q=>q.id===id)))throw new Error('無効なプレイヤーが含まれています。'); room.selectedTeam=unique;room.votes=new Map();room.voteResults=null;room.phase='vote';log(room,`${p.name} が任務チームを提案しました。`);
       } else if(type==='voteTeam'){
-        if(room.phase!=='vote')throw new Error('現在は投票フェーズではありません。');if(room.votes.has(p.id))throw new Error('すでに投票済みです。');room.votes.set(p.id,!!x.approve);if(room.votes.size===room.players.length){const approvals=[...room.votes.values()].filter(Boolean).length,rejects=room.players.length-approvals;room.voteResults=room.players.map(q=>({id:q.id,approve:room.votes.get(q.id)}));if(approvals>rejects){room.phase='mission';room.missionVotes=new Map();room.rejectionCount=0;log(room,`チームが承認されました（承認 ${approvals} / 否認 ${rejects}）。`);}else{room.rejectionCount++;log(room,`チームは否認されました（承認 ${approvals} / 否認 ${rejects}）。`);if(room.rejectionCount>=5)finish(room,'evil','5回連続でチーム編成が否認された');else{rotateLeader(room);room.proposalNumber++;room.selectedTeam=[];room.votes=new Map();room.phase='team';}}}
+        if(room.phase!=='vote')throw new Error('現在は投票フェーズではありません。');if(room.votes.has(p.id))throw new Error('すでに投票済みです。');room.votes.set(p.id,!!x.approve);if(room.votes.size===room.players.length){const approvals=[...room.votes.values()].filter(Boolean).length,rejects=room.players.length-approvals;room.voteResults=room.players.map(q=>({id:q.id,approve:room.votes.get(q.id)}));if(approvals>rejects){log(room,`チームが承認されました（承認 ${approvals} / 否認 ${rejects}）。`);beginResultPhase(room,'vote_result','mission');}else{room.rejectionCount++;log(room,`チームは否認されました（承認 ${approvals} / 否認 ${rejects}）。`);beginResultPhase(room,'vote_result',room.rejectionCount>=5?'gameover_rejections':'team_after_reject');}}
       } else if(type==='missionVote'){
-        if(room.phase!=='mission')throw new Error('現在は任務フェーズではありません。');if(!room.selectedTeam.includes(p.id))throw new Error('任務参加者のみ選択できます。');if(room.missionVotes.has(p.id))throw new Error('すでに任務結果を送信済みです。');const isGood=ROLE_META[p.role]?.team==='good';if(isGood&&!x.success)throw new Error('善陣営は任務成功のみ選択できます。');room.missionVotes.set(p.id,!!x.success);if(room.missionVotes.size===room.selectedTeam.length){const failCount=[...room.missionVotes.values()].filter(v=>!v).length,requiredFails=room.missionIndex===3&&room.players.length>=7?2:1,success=failCount<requiredFails;room.missions[room.missionIndex]={index:room.missionIndex,team:[...room.selectedTeam],success,failCount,requiredFails};log(room,`第${room.missionIndex+1}任務は${success?'成功':'失敗'}（失敗票 ${failCount}）。`);const gs=room.missions.filter(m=>m?.success).length,es=room.missions.filter(m=>m&&!m.success).length;if(es>=3)finish(room,'evil','任務を3回失敗させた');else if(gs>=3){const merlin=room.players.find(q=>q.role==='merlin'),assassin=room.players.find(q=>q.role==='assassin');if(merlin&&assassin){room.phase='assassination';room.selectedTeam=[];log(room,'善陣営が任務を3回成功。暗殺フェーズに移ります。');}else finish(room,'good','任務を3回成功させた');}else{room.missionIndex++;room.selectedTeam=[];room.missionVotes=new Map();room.votes=new Map();room.voteResults=null;room.proposalNumber++;rotateLeader(room);room.phase='team';}}
+        if(room.phase!=='mission')throw new Error('現在は任務フェーズではありません。');if(!room.selectedTeam.includes(p.id))throw new Error('任務参加者のみ選択できます。');if(room.missionVotes.has(p.id))throw new Error('すでに任務結果を送信済みです。');const isGood=ROLE_META[p.role]?.team==='good';if(isGood&&!x.success)throw new Error('善陣営は任務成功のみ選択できます。');room.missionVotes.set(p.id,!!x.success);if(room.missionVotes.size===room.selectedTeam.length){const failCount=[...room.missionVotes.values()].filter(v=>!v).length,requiredFails=room.missionIndex===3&&room.players.length>=7?2:1,success=failCount<requiredFails;room.missions[room.missionIndex]={index:room.missionIndex,team:[...room.selectedTeam],success,failCount,requiredFails};log(room,`第${room.missionIndex+1}任務は${success?'成功':'失敗'}（失敗票 ${failCount}）。`);const gs=room.missions.filter(m=>m?.success).length,es=room.missions.filter(m=>m&&!m.success).length;if(es>=3)beginResultPhase(room,'mission_result','gameover_evil_missions');else if(gs>=3){const merlin=room.players.find(q=>q.role==='merlin'),assassin=room.players.find(q=>q.role==='assassin');beginResultPhase(room,'mission_result',merlin&&assassin?'assassination':'gameover_good_missions');}else beginResultPhase(room,'mission_result','team_after_mission');}
+      } else if(type==='confirmResult'){
+        if(!isResultPhase(room))throw new Error('現在は結果確認フェーズではありません。');room.confirmations.add(p.id);if(room.confirmations.size===room.players.length)advanceResultPhase(room);
+      } else if(type==='advanceResult'){
+        ensureHost(room,p);if(!isResultPhase(room))throw new Error('現在は結果確認フェーズではありません。');advanceResultPhase(room);
       } else if(type==='assassinate'){
         if(room.phase!=='assassination')throw new Error('現在は暗殺フェーズではありません。');if(p.role!=='assassin')throw new Error('暗殺者のみ実行できます。');const t=room.players.find(q=>q.id===x.playerId);if(!t)throw new Error('対象が見つかりません。');room.assassinationTargetId=t.id;if(t.role==='merlin')finish(room,'evil',`${t.name}（マーリン）の暗殺に成功した`);else finish(room,'good',`${t.name} を暗殺したがマーリンではなかった`);
       } else if(type==='endGame'){

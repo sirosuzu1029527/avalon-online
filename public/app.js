@@ -158,7 +158,9 @@ function renderPhase() {
     lobby: '参加者を待っています。ホストが設定後にゲームを開始します。',
     team: `第${state.missionIndex+1}任務：${escapeHtml(leader)} が ${state.missionTeamSize} 人のチームを編成します。`,
     vote: '提案された任務チームを全員で承認／否認します。',
+    vote_result: 'チーム投票の結果を確認しています。全員の確認後に次へ進みます。',
     mission: '任務参加者が「成功／失敗」を秘密裏に選びます。',
+    mission_result: '任務結果を確認しています。全員の確認後に次へ進みます。',
     assassination: '任務3回成功。暗殺者がマーリンだと思うプレイヤーを選びます。',
     gameover: 'ゲーム終了。全役職を公開しています。'
   };
@@ -198,7 +200,9 @@ function renderMain() {
   if (state.phase === 'lobby') return renderLobby();
   if (state.phase === 'team') return renderTeam();
   if (state.phase === 'vote') return renderVote();
+  if (state.phase === 'vote_result') return renderVoteResult();
   if (state.phase === 'mission') return renderMissionVote();
+  if (state.phase === 'mission_result') return renderMissionResult();
   if (state.phase === 'assassination') return renderAssassination();
   if (state.phase === 'gameover') return renderGameover();
 }
@@ -242,11 +246,36 @@ function renderTeam() {
 function renderVote() {
   const teamNames = state.selectedTeam.map(playerName).map(escapeHtml).join(' / ');
   let body = `<h2 class="section-title">Quest ${state.missionIndex+1} — Approval Vote</h2><p class="lead">提案チーム：<span class="mission-member">${teamNames}</span></p>`;
-  if (state.voteResults) body += `<div class="vote-reveal">${state.voteResults.map(v=>`<div class="vote-chip ${v.approve?'approve':'reject'}"><b>${escapeHtml(playerName(v.id))}</b><br>${v.approve?'承認':'否認'}</div>`).join('')}</div>`;
   if (state.voteSubmitted) body += '<div class="notice good">投票済みです。他のプレイヤーを待っています。</div>';
   else body += '<div class="vote-buttons"><button id="approveBtn" class="btn success">承認</button><button id="rejectBtn" class="btn danger">否認</button></div>';
   mainContent.innerHTML = body;
   if (!state.voteSubmitted) { $('approveBtn').onclick=()=>action('voteTeam',{approve:true}); $('rejectBtn').onclick=()=>action('voteTeam',{approve:false}); }
+}
+function resultConfirmationMarkup() {
+  const progress = `<div class="notice">確認済み <b>${state.resultConfirmationCount}</b> / ${state.resultConfirmationTotal}人</div>`;
+  const own = state.resultConfirmed
+    ? '<div class="notice good">確認済みです。他のプレイヤーを待っています。</div>'
+    : '<div class="actions"><button id="confirmResultBtn" class="btn primary">確認した</button></div>';
+  let host = '';
+  if (isHost()) {
+    const names = (state.resultUnconfirmedPlayerIds || []).map(playerName).map(escapeHtml).join(' / ') || 'なし';
+    host = `<div class="notice gold">未確認：${names}</div><div class="actions"><button id="advanceResultBtn" class="btn">全員の確認を待たず次へ</button></div>`;
+  }
+  return progress + own + host;
+}
+function bindResultConfirmationActions() {
+  if ($('confirmResultBtn')) $('confirmResultBtn').onclick = () => action('confirmResult');
+  if ($('advanceResultBtn')) $('advanceResultBtn').onclick = () => {
+    if (confirm('未確認の参加者がいても次へ進みますか？')) action('advanceResult');
+  };
+}
+function renderVoteResult() {
+  const result = state.voteOutcome;
+  if (!result) return;
+  const teamNames = state.selectedTeam.map(playerName).map(escapeHtml).join(' / ');
+  const votes = (state.voteResults || []).map(v=>`<div class="vote-chip ${v.approve?'approve':'reject'}"><b>${escapeHtml(playerName(v.id))}</b><br>${v.approve?'承認':'否認'}</div>`).join('');
+  mainContent.innerHTML = `<h2 class="section-title">Quest ${state.missionIndex+1} — Vote Result</h2><p class="lead">提案チーム：<span class="mission-member">${teamNames}</span></p><div class="result-title ${result.approved?'good':'evil'}">${result.approved?'承認':'否認'}</div><p class="lead" style="text-align:center">承認 <b>${result.approvals}</b> / 否認 <b>${result.rejects}</b></p><div class="vote-reveal">${votes}</div>${resultConfirmationMarkup()}`;
+  bindResultConfirmationActions();
 }
 function renderMissionVote() {
   const teamNames = state.selectedTeam.map(playerName).map(escapeHtml).join(' / ');
@@ -259,6 +288,13 @@ function renderMissionVote() {
   }
   mainContent.innerHTML = body;
   if (state.isOnMission && !state.missionSubmitted) { $('missionSuccessBtn').onclick=()=>action('missionVote',{success:true}); if($('missionFailBtn')) $('missionFailBtn').onclick=()=>action('missionVote',{success:false}); }
+}
+function renderMissionResult() {
+  const result = state.missionOutcome;
+  if (!result) return;
+  const teamNames = (result.team || []).map(playerName).map(escapeHtml).join(' / ');
+  mainContent.innerHTML = `<h2 class="section-title">Quest ${state.missionIndex+1} — Mission Result</h2><p class="lead">任務参加者：<span class="mission-member">${teamNames}</span></p><div class="result-title ${result.success?'good':'evil'}">任務${result.success?'成功':'失敗'}</div><p class="lead" style="text-align:center">失敗票 <b>${result.failCount}</b>票 / 任務失敗に必要な失敗票 <b>${result.requiredFails}</b>票</p>${resultConfirmationMarkup()}`;
+  bindResultConfirmationActions();
 }
 function renderAssassination() {
   const isAssassin = state.me.role === 'assassin';

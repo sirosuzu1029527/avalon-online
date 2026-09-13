@@ -68,6 +68,30 @@ async function main() {
   assert.ok(!room.players.some(p=>p.id===excluded.id));
   assert.equal(room.players.filter(p=>ROLE_META[p.role].team==='evil').length,MISSION_CONFIG[5].evil);
 
+  const leader=room.players.find(p=>p.id===room.leaderId);
+  const team=room.players.slice(0,MISSION_CONFIG[5].team[0]).map(p=>p.id);
+  await post('/api/action',{code:c.code,token:leader.token,type:'proposeTeam',payload:{playerIds:team}});
+  assert.equal(room.phase,'vote');
+  for(const p of room.players) await post('/api/action',{code:c.code,token:p.token,type:'voteTeam',payload:{approve:true}});
+  assert.equal(room.phase,'vote_result');
+  const voteState=publicState(room,host);
+  assert.equal(voteState.voteOutcome.approved,true);
+  assert.equal(voteState.resultConfirmationCount,0);
+  for(const p of room.players.slice(0,-1)) await post('/api/action',{code:c.code,token:p.token,type:'confirmResult',payload:{}});
+  assert.equal(room.phase,'vote_result');
+  await post('/api/action',{code:c.code,token:room.players.at(-1).token,type:'confirmResult',payload:{}});
+  assert.equal(room.phase,'mission');
+
+  for(const id of team){
+    const p=room.players.find(q=>q.id===id);
+    await post('/api/action',{code:c.code,token:p.token,type:'missionVote',payload:{success:true}});
+  }
+  assert.equal(room.phase,'mission_result');
+  assert.equal(publicState(room,host).missionOutcome.success,true);
+  for(const p of room.players) await post('/api/action',{code:c.code,token:p.token,type:'confirmResult',payload:{}});
+  assert.equal(room.phase,'team');
+  assert.equal(room.missionIndex,1);
+
   const health=await fetch(base+'/health'); assert.equal((await health.json()).ok,true);
   console.log('All tests passed');
   await new Promise(resolve=>server.close(resolve));
