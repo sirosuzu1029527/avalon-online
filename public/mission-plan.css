@@ -1,0 +1,9 @@
+.mission-plan{margin-top:12px;display:grid;gap:6px}
+.mission-plan-title{margin-bottom:1px}
+.mission-plan-row{display:grid;grid-template-columns:24px 1fr 1.35fr;gap:6px;align-items:center;padding:7px 8px;border:1px solid #2b3545;border-radius:6px;background:rgba(255,255,255,.025);font-size:12px}
+.mission-plan-number{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;border:1px solid #465267;font-weight:700}
+.mission-plan-row.current{border-color:#a9894d;background:rgba(169,137,77,.10)}
+.mission-plan-row.success{border-color:rgba(74,166,112,.55)}
+.mission-plan-row.fail{border-color:rgba(193,79,79,.55)}
+.mission-plan-special{grid-column:2 / -1;color:#d2b978;font-size:11px}
+@media(max-width:440px){.mission-plan-row{grid-template-columns:22px 1fr 1.35fr;padding:6px;font-size:11px}}
