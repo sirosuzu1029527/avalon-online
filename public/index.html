@@ -31,14 +31,14 @@
           <span>表示名</span>
           <input id="nameInput" autocomplete="nickname" maxlength="20" placeholder="名前" />
         </label>
-        <button id="createBtn" class="btn primary wide">部屋を作る</button>
-        <div class="divider"><span>or</span></div>
         <label class="field">
           <span>ROOM CODE</span>
           <input id="codeInput" maxlength="5" autocapitalize="characters" placeholder="ABCDE" />
         </label>
-        <button id="joinBtn" class="btn wide">部屋に参加</button>
+        <button id="joinBtn" class="btn primary wide">部屋に参加</button>
         <p class="tiny muted">同じURLを開き、ルームコードを入力すると参加できます。</p>
+        <div class="divider"><span>or</span></div>
+        <button id="createBtn" class="btn wide">新しい部屋を作成</button>
       </div>
     </section>
 
@@ -96,6 +96,7 @@
     }
   </script>
   <script src="/app.js"></script>
+  <script src="/login-controls.js"></script>
   <script src="/timer.js"></script>
   <script src="/quest-plan.js"></script>
   <script src="/host-controls.js"></script>
