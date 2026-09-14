@@ -95,7 +95,7 @@
       const teamLabel = meta.team === 'good' ? '善陣営' : '悪陣営';
       const teamClass = meta.team === 'good' ? 'team-good' : 'team-evil';
       const count = counts.get(role);
-      return `<div class="notice"><div><b class="${teamClass}">${escapeHtml(meta.name)}</b>${count > 1 ? ` ×${count}` : ''} <span class="tiny muted">${teamLabel}</span></div><div class="tiny" style="margin-top:4px">${escapeHtml(meta.desc)}</div></div>`;
+      return `<div class="notice" data-role="${role}"><div><b class="${teamClass}">${escapeHtml(meta.name)}</b>${count > 1 ? ` ×${count}` : ''} <span class="tiny muted">${teamLabel}</span></div><div class="tiny" style="margin-top:4px">${escapeHtml(meta.desc)}</div></div>`;
     }).join('');
 
     return `<details style="margin-top:16px"><summary>このゲームの役職一覧</summary><div class="knowledge" style="margin-top:10px">${rows}</div></details>`;

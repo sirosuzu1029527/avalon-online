@@ -1,11 +1,6 @@
 (() => {
   const STORAGE_KEY = 'avalonVisualMode';
   const SPRITE_PATH = '/images/role-sprite-small.webp.b64.txt';
-  const ROLE_BY_NAME = {
-    'マーリン':'merlin','パーシヴァル':'percival','アーサーの忠臣':'loyal','暗殺者':'assassin',
-    'モルガナ':'morgana','モードレッド':'mordred','オベロン':'oberon','モードレッドの手下':'minion'
-  };
-  const ROLE_NAMES_LONGEST_FIRST = Object.entries(ROLE_BY_NAME).sort((a, b) => b[0].length - a[0].length);
   let spritePromise = null;
 
   function visualMode() {
@@ -23,10 +18,6 @@
   function artMarkup(role, extraClass='') {
     if (!role) return '';
     return `<div class="role-art role-art-${role} ${extraClass}" role="img" aria-label="${escapeHtml(roleName(role))}のイラスト"></div>`;
-  }
-  function roleFromCard(card) {
-    const text = card?.textContent || '';
-    return ROLE_NAMES_LONGEST_FIRST.find(([name]) => text.includes(name))?.[1] || null;
   }
   async function loadBase64Image(path, cssVariable) {
     const r = await fetch(path);
@@ -86,9 +77,9 @@
     if (card && !card.querySelector('.identity-art')) {
       card.insertAdjacentHTML('afterbegin', artMarkup(state.me.role, 'identity-art'));
     }
-    identityPanel.querySelectorAll('details .notice').forEach(notice => {
+    identityPanel.querySelectorAll('details .notice[data-role]').forEach(notice => {
       if (notice.classList.contains('role-reference-illustrated')) return;
-      const role = roleFromCard(notice);
+      const role = notice.dataset.role;
       if (!role) return;
       notice.innerHTML = `${artMarkup(role, 'role-reference-art')}<div class="role-reference-copy">${notice.innerHTML}</div>`;
       notice.classList.add('role-reference-illustrated');
@@ -97,9 +88,9 @@
   function enhanceGameover() {
     if (!illustrated()) return;
     ensureSprite();
-    document.querySelectorAll('.reveal-card').forEach(card => {
+    document.querySelectorAll('.reveal-card').forEach((card, index) => {
       if (card.querySelector('.reveal-art')) return;
-      const role = roleFromCard(card);
+      const role = state?.players?.[index]?.role;
       if (!role) return;
       card.insertAdjacentHTML('afterbegin', artMarkup(role, 'reveal-art'));
     });
