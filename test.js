@@ -1,12 +1,12 @@
 const assert = require('assert');
-const { server, rooms, defaultRoles, simpleRoles, customRoles, MISSION_CONFIG, ROLE_META, publicState } = require('./server');
+const { server, rooms, defaultRoles, simpleRoles, customRoles, QUEST_CONFIG, ROLE_META, publicState } = require('./server');
 
 async function main() {
   for(let n=5;n<=10;n++) {
     const roles=defaultRoles(n);
     assert.equal(roles.length,n);
-    assert.equal(roles.filter(r=>ROLE_META[r].team==='evil').length,MISSION_CONFIG[n].evil);
-    assert.equal(roles.filter(r=>ROLE_META[r].team==='good').length,n-MISSION_CONFIG[n].evil);
+    assert.equal(roles.filter(r=>ROLE_META[r].team==='evil').length,QUEST_CONFIG[n].evil);
+    assert.equal(roles.filter(r=>ROLE_META[r].team==='good').length,n-QUEST_CONFIG[n].evil);
   }
   assert.equal(simpleRoles(5).length,5);
   assert.throws(()=>customRoles(5,{merlin:true,assassin:false}),/暗殺者/);
@@ -66,10 +66,10 @@ async function main() {
   assert.equal(room.phase,'team');
   assert.equal(room.players.length,5);
   assert.ok(!room.players.some(p=>p.id===excluded.id));
-  assert.equal(room.players.filter(p=>ROLE_META[p.role].team==='evil').length,MISSION_CONFIG[5].evil);
+  assert.equal(room.players.filter(p=>ROLE_META[p.role].team==='evil').length,QUEST_CONFIG[5].evil);
 
   const leader=room.players.find(p=>p.id===room.leaderId);
-  const team=room.players.slice(0,MISSION_CONFIG[5].team[0]).map(p=>p.id);
+  const team=room.players.slice(0,QUEST_CONFIG[5].team[0]).map(p=>p.id);
   await post('/api/action',{code:c.code,token:leader.token,type:'proposeTeam',payload:{playerIds:team}});
   assert.equal(room.phase,'vote');
   for(const p of room.players) await post('/api/action',{code:c.code,token:p.token,type:'voteTeam',payload:{approve:true}});
@@ -80,17 +80,17 @@ async function main() {
   for(const p of room.players.slice(0,-1)) await post('/api/action',{code:c.code,token:p.token,type:'confirmResult',payload:{}});
   assert.equal(room.phase,'vote_result');
   await post('/api/action',{code:c.code,token:room.players.at(-1).token,type:'confirmResult',payload:{}});
-  assert.equal(room.phase,'mission');
+  assert.equal(room.phase,'quest');
 
   for(const id of team){
     const p=room.players.find(q=>q.id===id);
-    await post('/api/action',{code:c.code,token:p.token,type:'missionVote',payload:{success:true}});
+    await post('/api/action',{code:c.code,token:p.token,type:'questVote',payload:{success:true}});
   }
-  assert.equal(room.phase,'mission_result');
-  assert.equal(publicState(room,host).missionOutcome.success,true);
+  assert.equal(room.phase,'quest_result');
+  assert.equal(publicState(room,host).questOutcome.success,true);
   for(const p of room.players) await post('/api/action',{code:c.code,token:p.token,type:'confirmResult',payload:{}});
   assert.equal(room.phase,'team');
-  assert.equal(room.missionIndex,1);
+  assert.equal(room.questIndex,1);
 
   const health=await fetch(base+'/health'); assert.equal((await health.json()).ok,true);
   console.log('All tests passed');
