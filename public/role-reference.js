@@ -115,10 +115,19 @@
 
   renderLobby = function () {
     originalRenderLobby();
-    if (!state || isHost()) return;
-    const waitingNotice = [...mainContent.querySelectorAll('.notice')].find(el => el.textContent.includes('ホストがゲームを開始するまでお待ちください。'));
-    if (waitingNotice) waitingNotice.insertAdjacentHTML('beforebegin', guestRoleSetupMarkup());
-    else mainContent.insertAdjacentHTML('beforeend', guestRoleSetupMarkup());
+    if (!state) return;
+
+    if (!isHost()) {
+      const waitingNotice = [...mainContent.querySelectorAll('.notice')].find(el => el.textContent.includes('ホストがゲームを開始するまでお待ちください。'));
+      if (waitingNotice) waitingNotice.insertAdjacentHTML('beforebegin', guestRoleSetupMarkup());
+      else mainContent.insertAdjacentHTML('beforeend', guestRoleSetupMarkup());
+    }
+
+    const reference = roleReferenceMarkup();
+    if (!reference) return;
+    const setupGrid = mainContent.querySelector('.setup-grid');
+    if (setupGrid) setupGrid.insertAdjacentHTML('afterend', reference);
+    else mainContent.insertAdjacentHTML('beforeend', reference);
   };
 
   renderIdentity = function () {
