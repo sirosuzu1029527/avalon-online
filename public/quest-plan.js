@@ -9,6 +9,7 @@
   };
 
   const previousRenderQuests = renderQuests;
+  const previousRenderQuestResult = renderQuestResult;
 
   renderQuests = function () {
     previousRenderQuests();
@@ -23,7 +24,6 @@
 
     const rows = teams.map((teamSize, index) => {
       const requiredFails = index === 3 && state.players.length >= 7 ? 2 : 1;
-      const requiredSuccesses = teamSize - requiredFails + 1;
       const quest = state.quests?.[index];
       const isCurrent = !quest && index === state.questIndex && state.phase !== 'gameover';
       const statusClass = quest ? (quest.success ? ' success' : ' fail') : (isCurrent ? ' current' : '');
@@ -36,9 +36,17 @@
         return `<div class="quest-plan-row${statusClass}"><div class="quest-plan-heading"><span class="quest-plan-number">${index + 1}</span><b>Quest ${index + 1}</b><span class="quest-plan-result">${resultMark}</span></div><div class="quest-plan-detail"><span>参加者：${participants}</span><span>成功票：<b>${successVotes}</b> / ${actualTeamSize}</span></div></div>`;
       }
 
-      return `<div class="quest-plan-row${statusClass}"><div class="quest-plan-heading"><span class="quest-plan-number">${index + 1}</span><b>Quest ${index + 1}</b></div><div class="quest-plan-detail"><span>参加人数：<b>${teamSize}</b>人</span><span>成功に必要：<b>${requiredSuccesses}</b>人</span></div></div>`;
+      return `<div class="quest-plan-row${statusClass}"><div class="quest-plan-heading"><span class="quest-plan-number">${index + 1}</span><b>Quest ${index + 1}</b></div><div class="quest-plan-detail"><span>参加人数：<b>${teamSize}</b>人</span><span>失敗判定：<b>${requiredFails}</b>票以上</span></div></div>`;
     }).join('');
 
     questPanel.insertAdjacentHTML('beforeend', `<div class="quest-plan">${rows}</div>`);
+  };
+
+  renderQuestResult = function () {
+    previousRenderQuestResult();
+    const result = state?.questOutcome;
+    if (!result) return;
+    const summary = [...mainContent.querySelectorAll('.lead')].find(el => el.textContent.includes('クエスト失敗に必要な失敗票'));
+    if (summary) summary.innerHTML = `失敗票 <b>${result.failCount}</b>票 / 失敗判定 <b>${result.requiredFails}</b>票以上`;
   };
 })();
