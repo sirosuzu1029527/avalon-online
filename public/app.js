@@ -8,7 +8,7 @@ const roomView = $('roomView');
 const mainContent = $('mainContent');
 const identityPanel = $('identityPanel');
 const playersPanel = $('playersPanel');
-const missionPanel = $('missionPanel');
+const questPanel = $('questPanel');
 const phaseBanner = $('phaseBanner');
 
 function escapeHtml(s='') {
@@ -150,16 +150,18 @@ boot();
 function render() {
   if (!state) return;
   $('roomCode').textContent = state.code;
-  renderPhase(); renderIdentity(); renderPlayers(); renderMissions(); renderMain(); renderHostEndGameControl(); renderLog();
+  renderPhase(); renderIdentity(); renderPlayers(); renderQuests(); renderMain(); renderHostEndGameControl(); renderLog();
 }
 function renderPhase() {
   const leader = state.leaderId ? playerName(state.leaderId) : null;
   const map = {
     lobby: '参加者を待っています。ホストが設定後にゲームを開始します。',
-    team: `第${state.missionIndex+1}任務：${escapeHtml(leader)} が ${state.missionTeamSize} 人のチームを編成します。`,
-    vote: '提案された任務チームを全員で承認／否認します。',
-    mission: '任務参加者が「成功／失敗」を秘密裏に選びます。',
-    assassination: '任務3回成功。暗殺者がマーリンだと思うプレイヤーを選びます。',
+    team: `第${state.questIndex+1}クエスト：${escapeHtml(leader)} が ${state.questTeamSize} 人のチームを編成します。`,
+    vote: '提案されたクエストチームを全員で承認／否認します。',
+    vote_result: 'チーム投票の結果を確認しています。全員の確認後に次へ進みます。',
+    quest: 'クエスト参加者が「成功／失敗」を秘密裏に選びます。',
+    quest_result: 'クエスト結果を確認しています。全員の確認後に次へ進みます。',
+    assassination: 'クエスト3回成功。暗殺者がマーリンだと思うプレイヤーを選びます。',
     gameover: 'ゲーム終了。全役職を公開しています。'
   };
   phaseBanner.innerHTML = map[state.phase] || '';
@@ -187,18 +189,20 @@ function renderPlayers() {
     return `<div class="player-row"><span class="dot ${p.connected?'online':''}"></span><span class="name">${escapeHtml(p.name)}${p.id===state.me.id?'（あなた）':''}</span>${role}${badges}</div>`;
   }).join('')}</div>`;
 }
-function renderMissions() {
+function renderQuests() {
   const dots = Array.from({length:5},(_,i) => {
-    const m = state.missions[i], cls = m ? (m.success?'success':'fail') : (i===state.missionIndex && !['lobby','gameover'].includes(state.phase)?'current':'');
-    return `<div class="mission-dot ${cls}" title="第${i+1}任務">${m ? (m.success?'✓':'✕') : i+1}</div>`;
+    const q = state.quests[i], cls = q ? (q.success?'success':'fail') : (i===state.questIndex && !['lobby','gameover'].includes(state.phase)?'current':'');
+    return `<div class="quest-dot ${cls}" title="第${i+1}クエスト">${q ? (q.success?'✓':'✕') : i+1}</div>`;
   }).join('');
-  missionPanel.innerHTML = `<h3 class="section-title">Missions</h3><div class="mission-track">${dots}</div><div class="mission-summary"><span>成功 ${state.goodMissionSuccesses}</span><span>失敗 ${state.evilMissionSuccesses}</span></div>${state.phase!=='lobby'&&state.missionTeamSize?`<div class="tiny muted" style="margin-top:10px">第${state.missionIndex+1}任務：${state.missionTeamSize}人 / 失敗に必要な失敗票 ${state.missionRequires}</div>`:''}`;
+  questPanel.innerHTML = `<h3 class="section-title">Quests</h3><div class="quest-track">${dots}</div><div class="quest-summary"><span>成功 ${state.goodQuestSuccesses}</span><span>失敗 ${state.evilQuestSuccesses}</span></div>${state.phase!=='lobby'&&state.questTeamSize?`<div class="tiny muted" style="margin-top:10px">第${state.questIndex+1}クエスト：${state.questTeamSize}人 / 失敗に必要な失敗票 ${state.questRequires}</div>`:''}`;
 }
 function renderMain() {
   if (state.phase === 'lobby') return renderLobby();
   if (state.phase === 'team') return renderTeam();
   if (state.phase === 'vote') return renderVote();
-  if (state.phase === 'mission') return renderMissionVote();
+  if (state.phase === 'vote_result') return renderVoteResult();
+  if (state.phase === 'quest') return renderQuestVote();
+  if (state.phase === 'quest_result') return renderQuestResult();
   if (state.phase === 'assassination') return renderAssassination();
   if (state.phase === 'gameover') return renderGameover();
 }
@@ -227,9 +231,9 @@ function renderLobby() {
   }
 }
 function renderTeam() {
-  const required = state.missionTeamSize;
+  const required = state.questTeamSize;
   const boxes = state.players.map(p => `<label class="choice ${selectedTeam.has(p.id)?'selected':''} ${!isLeader()?'disabled':''}"><input type="checkbox" data-id="${p.id}" ${selectedTeam.has(p.id)?'checked':''} ${!isLeader()?'disabled':''}><span>${escapeHtml(p.name)}</span></label>`).join('');
-  mainContent.innerHTML = `<h2 class="section-title">Quest ${state.missionIndex+1} — Team Building</h2><p class="lead">リーダー <b>${escapeHtml(playerName(state.leaderId))}</b> が任務参加者を <b>${required} 人</b>選びます。</p>${state.missionRequires===2?'<div class="notice gold">この任務は失敗票が2票以上で失敗します。</div>':''}<div class="choice-grid">${boxes}</div>${isLeader()?'<div class="actions"><button id="proposeBtn" class="btn primary">このチームを提案</button></div>':'<div class="notice">リーダーの提案を待っています。</div>'}`;
+  mainContent.innerHTML = `<h2 class="section-title">Quest ${state.questIndex+1} — Team Building</h2><p class="lead">リーダー <b>${escapeHtml(playerName(state.leaderId))}</b> がクエスト参加者を <b>${required} 人</b>選びます。</p>${state.questRequires===2?'<div class="notice gold">このクエストは失敗票が2票以上で失敗します。</div>':''}<div class="choice-grid">${boxes}</div>${isLeader()?'<div class="actions"><button id="proposeBtn" class="btn primary">このチームを提案</button></div>':'<div class="notice">リーダーの提案を待っています。</div>'}`;
   if (isLeader()) {
     mainContent.querySelectorAll('input[data-id]').forEach(inp => inp.onchange = () => {
       if (inp.checked) selectedTeam.add(inp.dataset.id); else selectedTeam.delete(inp.dataset.id);
@@ -241,28 +245,60 @@ function renderTeam() {
 }
 function renderVote() {
   const teamNames = state.selectedTeam.map(playerName).map(escapeHtml).join(' / ');
-  let body = `<h2 class="section-title">Quest ${state.missionIndex+1} — Approval Vote</h2><p class="lead">提案チーム：<span class="mission-member">${teamNames}</span></p>`;
-  if (state.voteResults) body += `<div class="vote-reveal">${state.voteResults.map(v=>`<div class="vote-chip ${v.approve?'approve':'reject'}"><b>${escapeHtml(playerName(v.id))}</b><br>${v.approve?'承認':'否認'}</div>`).join('')}</div>`;
+  let body = `<h2 class="section-title">Quest ${state.questIndex+1} — Approval Vote</h2><p class="lead">提案チーム：<span class="quest-member">${teamNames}</span></p>`;
   if (state.voteSubmitted) body += '<div class="notice good">投票済みです。他のプレイヤーを待っています。</div>';
   else body += '<div class="vote-buttons"><button id="approveBtn" class="btn success">承認</button><button id="rejectBtn" class="btn danger">否認</button></div>';
   mainContent.innerHTML = body;
   if (!state.voteSubmitted) { $('approveBtn').onclick=()=>action('voteTeam',{approve:true}); $('rejectBtn').onclick=()=>action('voteTeam',{approve:false}); }
 }
-function renderMissionVote() {
+function resultConfirmationMarkup() {
+  const progress = `<div class="notice">確認済み <b>${state.resultConfirmationCount}</b> / ${state.resultConfirmationTotal}人</div>`;
+  const own = state.resultConfirmed
+    ? '<div class="notice good">確認済みです。他のプレイヤーを待っています。</div>'
+    : '<div class="actions"><button id="confirmResultBtn" class="btn primary">確認した</button></div>';
+  let host = '';
+  if (isHost()) {
+    const names = (state.resultUnconfirmedPlayerIds || []).map(playerName).map(escapeHtml).join(' / ') || 'なし';
+    host = `<div class="notice gold">未確認：${names}</div><div class="actions"><button id="advanceResultBtn" class="btn">全員の確認を待たず次へ</button></div>`;
+  }
+  return progress + own + host;
+}
+function bindResultConfirmationActions() {
+  if ($('confirmResultBtn')) $('confirmResultBtn').onclick = () => action('confirmResult');
+  if ($('advanceResultBtn')) $('advanceResultBtn').onclick = () => {
+    if (confirm('未確認の参加者がいても次へ進みますか？')) action('advanceResult');
+  };
+}
+function renderVoteResult() {
+  const result = state.voteOutcome;
+  if (!result) return;
   const teamNames = state.selectedTeam.map(playerName).map(escapeHtml).join(' / ');
-  let body = `<h2 class="section-title">Quest ${state.missionIndex+1} — Mission</h2><p class="lead">任務参加者：<span class="mission-member">${teamNames}</span></p>`;
-  if (!state.isOnMission) body += '<div class="notice">あなたは今回の任務には参加していません。結果を待っています。</div>';
-  else if (state.missionSubmitted) body += '<div class="notice good">送信済みです。他の任務参加者を待っています。</div>';
+  const votes = (state.voteResults || []).map(v=>`<div class="vote-chip ${v.approve?'approve':'reject'}"><b>${escapeHtml(playerName(v.id))}</b><br>${v.approve?'承認':'否認'}</div>`).join('');
+  mainContent.innerHTML = `<h2 class="section-title">Quest ${state.questIndex+1} — Vote Result</h2><p class="lead">提案チーム：<span class="quest-member">${teamNames}</span></p><div class="result-title ${result.approved?'good':'evil'}">${result.approved?'承認':'否認'}</div><p class="lead" style="text-align:center">承認 <b>${result.approvals}</b> / 否認 <b>${result.rejects}</b></p><div class="vote-reveal">${votes}</div>${resultConfirmationMarkup()}`;
+  bindResultConfirmationActions();
+}
+function renderQuestVote() {
+  const teamNames = state.selectedTeam.map(playerName).map(escapeHtml).join(' / ');
+  let body = `<h2 class="section-title">Quest ${state.questIndex+1}</h2><p class="lead">クエスト参加者：<span class="quest-member">${teamNames}</span></p>`;
+  if (!state.isOnQuest) body += '<div class="notice">あなたは今回のクエストには参加していません。結果を待っています。</div>';
+  else if (state.questSubmitted) body += '<div class="notice good">送信済みです。他のクエスト参加者を待っています。</div>';
   else {
     const isGood = state.me.roleMeta?.team === 'good';
-    body += `<p class="tiny muted">選択内容は個別には公開されません。結果では失敗票の枚数だけ表示されます。</p><div class="vote-buttons"><button id="missionSuccessBtn" class="btn success">任務成功</button><button id="missionFailBtn" class="btn danger" ${isGood?'disabled':''}>任務失敗</button></div>${isGood?'<div class="notice good">善陣営は「任務成功」のみ選べます。</div>':''}`;
+    body += `<p class="tiny muted">選択内容は個別には公開されません。結果では失敗票の枚数だけ表示されます。</p><div class="vote-buttons"><button id="questSuccessBtn" class="btn success">クエスト成功</button><button id="questFailBtn" class="btn danger" ${isGood?'disabled':''}>クエスト失敗</button></div>${isGood?'<div class="notice good">善陣営は「クエスト成功」のみ選べます。</div>':''}`;
   }
   mainContent.innerHTML = body;
-  if (state.isOnMission && !state.missionSubmitted) { $('missionSuccessBtn').onclick=()=>action('missionVote',{success:true}); if($('missionFailBtn')) $('missionFailBtn').onclick=()=>action('missionVote',{success:false}); }
+  if (state.isOnQuest && !state.questSubmitted) { $('questSuccessBtn').onclick=()=>action('questVote',{success:true}); if($('questFailBtn')) $('questFailBtn').onclick=()=>action('questVote',{success:false}); }
+}
+function renderQuestResult() {
+  const result = state.questOutcome;
+  if (!result) return;
+  const teamNames = (result.team || []).map(playerName).map(escapeHtml).join(' / ');
+  mainContent.innerHTML = `<h2 class="section-title">Quest ${state.questIndex+1} — Result</h2><p class="lead">クエスト参加者：<span class="quest-member">${teamNames}</span></p><div class="result-title ${result.success?'good':'evil'}">クエスト${result.success?'成功':'失敗'}</div><p class="lead" style="text-align:center">失敗票 <b>${result.failCount}</b>票 / クエスト失敗に必要な失敗票 <b>${result.requiredFails}</b>票</p>${resultConfirmationMarkup()}`;
+  bindResultConfirmationActions();
 }
 function renderAssassination() {
   const isAssassin = state.me.role === 'assassin';
-  let body = '<h2 class="section-title">Assassination</h2><div class="notice gold">善陣営は3つの任務を成功させました。しかし暗殺者がマーリンを見抜けば悪陣営の逆転勝利です。</div>';
+  let body = '<h2 class="section-title">Assassination</h2><div class="notice gold">善陣営は3つのクエストを成功させました。しかし暗殺者がマーリンを見抜けば悪陣営の逆転勝利です。</div>';
   if (isAssassin) body += `<p class="lead">マーリンだと思うプレイヤーを1人選んでください。</p><div class="choice-grid">${state.players.filter(p=>p.id!==state.me.id).map(p=>`<button class="btn assassinate" data-id="${p.id}">${escapeHtml(p.name)}</button>`).join('')}</div>`;
   else body += '<div class="notice">暗殺者が対象を選んでいます。</div>';
   mainContent.innerHTML=body;

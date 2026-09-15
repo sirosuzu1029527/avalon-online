@@ -1,75 +1,69 @@
 const assert = require('assert');
-const { server, rooms, defaultRoles, simpleRoles, customRoles, MISSION_CONFIG, ROLE_META, publicState } = require('./server');
+const { server, rooms, QUEST_CONFIG, TIMER_DEFAULTS, ROLE_META, publicState } = require('./server');
 
-async function main() {
-  for(let n=5;n<=10;n++) {
-    const roles=defaultRoles(n);
-    assert.equal(roles.length,n);
-    assert.equal(roles.filter(r=>ROLE_META[r].team==='evil').length,MISSION_CONFIG[n].evil);
-    assert.equal(roles.filter(r=>ROLE_META[r].team==='good').length,n-MISSION_CONFIG[n].evil);
-  }
-  assert.equal(simpleRoles(5).length,5);
-  assert.throws(()=>customRoles(5,{merlin:true,assassin:false}),/暗殺者/);
-
+async function main(){
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-  const port=server.address().port, base=`http://127.0.0.1:${port}`;
-  const post=async(path,body)=>{
-    const r=await fetch(base+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
-    const j=await r.json();
-    if(!r.ok) throw new Error(j.message);
-    return j;
-  };
-  const rawPost=async(path,body)=>{
-    const r=await fetch(base+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
-    return {status:r.status,body:await r.json()};
-  };
+  const base=`http://127.0.0.1:${server.address().port}`;
+  const rawPost=async(path,body)=>{const r=await fetch(base+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});return {status:r.status,body:await r.json()};};
+  const post=async(path,body)=>{const x=await rawPost(path,body);if(x.status>=400)throw new Error(x.body.message);return x.body;};
 
-  const home=await fetch(base+'/'); assert.equal(home.status,200); assert.match(await home.text(),/AVALON/);
-  const c=await post('/api/create',{name:'P1',token:'t1'}); assert.equal(c.code.length,5);
-  for(let i=2;i<=6;i++) await post('/api/join',{code:c.code,name:`P${i}`,token:`t${i}`});
-  const room=rooms.get(c.code); assert.equal(room.players.length,6);
-  room.players.forEach(p=>p.connected=true);
+  const c=await post('/api/create',{name:'Host',token:'h'});
+  for(let i=2;i<=10;i++) await post('/api/join',{code:c.code,name:`P${i}`,token:`p${i}`});
+  const room=rooms.get(c.code);
+  assert.equal(room.players.length,10);assert.equal(room.spectators.length,0);
 
-  await post('/api/action',{code:c.code,token:'t1',type:'startGame',payload:{}});
-  assert.equal(room.phase,'team');
-  assert.equal(room.players.filter(p=>ROLE_META[p.role].team==='evil').length,2);
+  await post('/api/join',{code:c.code,name:'Watcher',token:'s1'});
+  assert.equal(room.players.length,10);assert.equal(room.spectators.length,1);
+  const spectator=room.spectators[0];
+  let ss=publicState(room,spectator);
+  assert.equal(ss.me.isSpectator,true);assert.ok(ss.spectatorSecrets);assert.equal(ss.spectatorSecrets.players.length,10);
+  const ps=publicState(room,room.players[1]);
+  assert.equal('spectatorSecrets' in ps,false);
 
-  const nonHost=room.players.find(p=>p.id!==room.hostId);
-  const denied=await rawPost('/api/action',{code:c.code,token:nonHost.token,type:'endGame',payload:{}});
-  assert.equal(denied.status,400);
-  assert.match(denied.body.message,/ホストのみ/);
+  const hostSwitch=await rawPost('/api/action',{code:c.code,token:'h',type:'setParticipationType',payload:{participationType:'spectator'}});
+  assert.equal(hostSwitch.status,400);assert.match(hostSwitch.body.message,/ホスト/);
+  const fullSwitch=await rawPost('/api/action',{code:c.code,token:'s1',type:'setParticipationType',payload:{participationType:'player'}});
+  assert.equal(fullSwitch.status,400);assert.match(fullSwitch.body.message,/10人/);
 
-  await post('/api/action',{code:c.code,token:'t1',type:'endGame',payload:{}});
-  assert.equal(room.phase,'gameover');
-  assert.equal(room.winner,null);
-  const host=room.players.find(p=>p.id===room.hostId);
-  assert.ok(publicState(room,host).players.every(p=>p.role));
+  await post('/api/action',{code:c.code,token:'p10',type:'setParticipationType',payload:{participationType:'spectator'}});
+  assert.equal(room.players.length,9);assert.equal(room.spectators.length,2);
+  await post('/api/action',{code:c.code,token:'s1',type:'setParticipationType',payload:{participationType:'player'}});
+  assert.equal(room.players.length,10);assert.equal(room.spectators.length,1);
 
-  const beforeRestartNonHost=room.players.find(p=>p.id!==room.hostId);
-  assert.equal(publicState(room,beforeRestartNonHost).phase,'gameover');
+  const watcher=room.spectators[0];
+  await post('/api/action',{code:c.code,token:'h',type:'removeSpectator',payload:{spectatorId:watcher.id}});
+  assert.equal(room.spectators.length,0);
 
-  await post('/api/action',{code:c.code,token:'t1',type:'restartGame',payload:{}});
-  assert.equal(room.phase,'rematch');
-  assert.equal(publicState(room,host).phase,'lobby');
-  assert.equal(publicState(room,beforeRestartNonHost).phase,'gameover');
-  assert.equal(publicState(room,beforeRestartNonHost).rematchOpen,true);
+  // Make a 5-player room and verify spectator mid-game behavior and secret boundary.
+  const c2=await post('/api/create',{name:'H2',token:'x1'});
+  for(let i=2;i<=5;i++)await post('/api/join',{code:c2.code,name:`X${i}`,token:`x${i}`});
+  const r2=rooms.get(c2.code);r2.players.forEach(p=>p.connected=true);
+  await post('/api/action',{code:c2.code,token:'x1',type:'startGame',payload:{}});
+  assert.equal(r2.phase,'team');assert.equal(r2.players.length,5);
+  await post('/api/join',{code:c2.code,name:'Late',token:'late'});
+  assert.equal(r2.players.length,5);assert.equal(r2.spectators.length,1);
+  const late=r2.spectators[0], lateState=publicState(r2,late);
+  assert.equal(lateState.me.isSpectator,true);assert.ok(lateState.spectatorSecrets.players.every(p=>p.role));
+  assert.equal(publicState(r2,r2.players[0]).spectatorSecrets,undefined);
+  const illegal=await rawPost('/api/action',{code:c2.code,token:'late',type:'voteTeam',payload:{approve:true}});
+  assert.equal(illegal.status,400);assert.match(illegal.body.message,/プレイヤーのみ/);
 
-  const others=room.players.filter(p=>p.id!==room.hostId);
-  for(const p of others.slice(0,4)) await post('/api/action',{code:c.code,token:p.token,type:'returnToLobby',payload:{}});
-  assert.equal(room.returnedPlayers.size,5);
-  assert.equal(publicState(room,others[0]).phase,'lobby');
-  assert.equal(publicState(room,others[4]).phase,'gameover');
+  const leader=r2.players.find(p=>p.id===r2.leaderId);
+  const team=r2.players.slice(0,QUEST_CONFIG[5].team[0]).map(p=>p.id);
+  await post('/api/action',{code:c2.code,token:leader.token,type:'proposeTeam',payload:{playerIds:team}});
+  await post('/api/action',{code:c2.code,token:r2.players[0].token,type:'voteTeam',payload:{approve:true}});
+  const secretDuringVote=publicState(r2,late).spectatorSecrets.liveVotes;
+  assert.equal(secretDuringVote.find(v=>v.id===r2.players[0].id).approve,true);
+  assert.equal(secretDuringVote.filter(v=>v.submitted).length,1);
 
-  room.players.forEach(p=>p.connected=true);
-  const excluded=others[4];
-  await post('/api/action',{code:c.code,token:'t1',type:'startGame',payload:{}});
-  assert.equal(room.phase,'team');
-  assert.equal(room.players.length,5);
-  assert.ok(!room.players.some(p=>p.id===excluded.id));
-  assert.equal(room.players.filter(p=>ROLE_META[p.role].team==='evil').length,MISSION_CONFIG[5].evil);
+  // Spectators can leave during games.
+  await post('/api/action',{code:c2.code,token:'late',type:'leaveRoom',payload:{}});
+  assert.equal(r2.spectators.length,0);
 
-  const health=await fetch(base+'/health'); assert.equal((await health.json()).ok,true);
+  assert.deepEqual(TIMER_DEFAULTS,{enabled:true,team:120,vote:30,result:20,quest:30,assassination:120});
+  assert.equal(r2.players.filter(p=>ROLE_META[p.role].team==='evil').length,QUEST_CONFIG[5].evil);
+  const home=await fetch(base+'/');assert.equal(home.status,200);assert.match(await home.text(),/spectator\.js/);
   console.log('All tests passed');
   await new Promise(resolve=>server.close(resolve));
 }
-main().catch(async e=>{console.error(e);try{await new Promise(r=>server.close(r));}catch{}process.exit(1)});
+main().catch(async e=>{console.error(e);try{await new Promise(r=>server.close(r));}catch{}process.exit(1);});

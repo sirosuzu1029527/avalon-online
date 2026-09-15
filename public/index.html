@@ -7,6 +7,8 @@
   <title>非公式 The Resistance : Avalon Online</title>
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="/role-art.css" />
+  <link rel="stylesheet" href="/quest-plan.css" />
+  <link rel="stylesheet" href="/timer.css" />
 </head>
 <body>
   <div class="bg"></div>
@@ -29,14 +31,14 @@
           <span>表示名</span>
           <input id="nameInput" autocomplete="nickname" maxlength="20" placeholder="名前" />
         </label>
-        <button id="createBtn" class="btn primary wide">部屋を作る</button>
-        <div class="divider"><span>or</span></div>
         <label class="field">
           <span>ROOM CODE</span>
           <input id="codeInput" maxlength="5" autocapitalize="characters" placeholder="ABCDE" />
         </label>
         <button id="joinBtn" class="btn wide">部屋に参加</button>
         <p class="tiny muted">同じURLを開き、ルームコードを入力すると参加できます。</p>
+        <div class="divider"><span>または</span></div>
+        <button id="createBtn" class="btn wide">新しい部屋を作成</button>
       </div>
     </section>
 
@@ -59,11 +61,11 @@
       <div class="game-grid">
         <section class="panel main-panel">
           <div id="mainContent"></div>
+          <section class="quest-section" id="questPanel"></section>
         </section>
         <aside class="side-stack">
           <section class="panel" id="identityPanel"></section>
           <section class="panel" id="playersPanel"></section>
-          <section class="panel" id="missionPanel"></section>
         </aside>
       </div>
 
@@ -94,8 +96,12 @@
     }
   </script>
   <script src="/app.js"></script>
+  <script src="/login-controls.js"></script>
+  <script src="/timer.js"></script>
+  <script src="/quest-plan.js"></script>
   <script src="/host-controls.js"></script>
   <script src="/role-reference.js"></script>
   <script src="/role-art.js"></script>
+  <script src="/spectator.js"></script>
 </body>
 </html>

@@ -1,5 +1,6 @@
 (() => {
   const originalRenderIdentity = renderIdentity;
+  const originalRenderLobby = renderLobby;
 
   const ROLE_REFERENCE = {
     merlin: {
@@ -20,7 +21,7 @@
     assassin: {
       name: '暗殺者',
       team: 'evil',
-      desc: '善陣営が任務を3回成功させた後、マーリンを当てれば逆転勝利できる。'
+      desc: '善陣営がクエストを3回成功させた後、マーリンを当てれば逆転勝利できる。'
     },
     morgana: {
       name: 'モルガナ',
@@ -95,11 +96,39 @@
       const teamLabel = meta.team === 'good' ? '善陣営' : '悪陣営';
       const teamClass = meta.team === 'good' ? 'team-good' : 'team-evil';
       const count = counts.get(role);
-      return `<div class="notice"><div><b class="${teamClass}">${escapeHtml(meta.name)}</b>${count > 1 ? ` ×${count}` : ''} <span class="tiny muted">${teamLabel}</span></div><div class="tiny" style="margin-top:4px">${escapeHtml(meta.desc)}</div></div>`;
+      return `<div class="notice" data-role="${role}"><div><b class="${teamClass}">${escapeHtml(meta.name)}</b>${count > 1 ? ` ×${count}` : ''} <span class="tiny muted">${teamLabel}</span></div><div class="tiny" style="margin-top:4px">${escapeHtml(meta.desc)}</div></div>`;
     }).join('');
 
     return `<details style="margin-top:16px"><summary>このゲームの役職一覧</summary><div class="knowledge" style="margin-top:10px">${rows}</div></details>`;
   }
+
+  function guestRoleSetupMarkup() {
+    const n = state?.players?.length || 0;
+    const preset = state.setup?.preset || 'standard';
+    const standardRoles = preset === 'standard' ? standardRoleSummary(n) : '';
+    const customRoles = preset === 'custom'
+      ? `<div><div class="subhead">カスタム役職</div><div class="checkboxes">${['merlin','percival','assassin','morgana','mordred','oberon'].map(role => `<label class="checkline"><input type="checkbox" disabled ${state.setup?.custom?.[role]?'checked':''}> ${escapeHtml(roleName(role))}</label>`).join('')}</div></div>`
+      : '';
+
+    return `<div class="setup-grid"><div><div class="subhead">配役プリセット</div><select disabled><option value="standard" ${preset==='standard'?'selected':''}>Standard</option><option value="simple" ${preset==='simple'?'selected':''}>Simple</option><option value="custom" ${preset==='custom'?'selected':''}>Custom</option></select><p class="tiny muted">Standard は人数に応じて特殊役職を増やします。Simple はマーリン＋暗殺者のみです。</p>${standardRoles}</div>${customRoles}</div><div class="notice">配役設定はホストのみ変更できます。</div>`;
+  }
+
+  renderLobby = function () {
+    originalRenderLobby();
+    if (!state) return;
+
+    if (!isHost()) {
+      const waitingNotice = [...mainContent.querySelectorAll('.notice')].find(el => el.textContent.includes('ホストがゲームを開始するまでお待ちください。'));
+      if (waitingNotice) waitingNotice.insertAdjacentHTML('beforebegin', guestRoleSetupMarkup());
+      else mainContent.insertAdjacentHTML('beforeend', guestRoleSetupMarkup());
+    }
+
+    const reference = roleReferenceMarkup();
+    if (!reference) return;
+    const setupGrid = mainContent.querySelector('.setup-grid');
+    if (setupGrid) setupGrid.insertAdjacentHTML('afterend', reference);
+    else mainContent.insertAdjacentHTML('beforeend', reference);
+  };
 
   renderIdentity = function () {
     originalRenderIdentity();

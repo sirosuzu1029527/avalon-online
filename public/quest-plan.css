@@ -1,0 +1,14 @@
+.quest-section{margin-top:24px;padding-top:18px;border-top:1px solid #2b3545}
+.quest-section .section-title{margin-bottom:10px}
+.quest-plan{margin-top:14px;display:grid;gap:8px}
+.quest-plan-row{display:grid;grid-template-columns:minmax(150px,.7fr) minmax(0,1.8fr);gap:12px;align-items:center;padding:10px 12px;border:1px solid #2b3545;border-radius:8px;background:rgba(255,255,255,.025);font-size:13px}
+.quest-plan-heading{display:flex;align-items:center;gap:8px;white-space:nowrap}
+.quest-plan-number{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;border:1px solid #465267;font-weight:700;flex:none}
+.quest-plan-result{font-size:18px;font-weight:800;line-height:1}
+.quest-plan-detail{display:flex;flex-wrap:wrap;gap:8px 18px;min-width:0}
+.quest-plan-row.current{border-color:#a9894d;background:rgba(169,137,77,.10)}
+.quest-plan-row.success{border-color:rgba(74,166,112,.55)}
+.quest-plan-row.success .quest-plan-result{color:#71c891}
+.quest-plan-row.fail{border-color:rgba(193,79,79,.55)}
+.quest-plan-row.fail .quest-plan-result{color:#db7777}
+@media(max-width:700px){.quest-plan-row{grid-template-columns:1fr;gap:7px}.quest-plan-detail{padding-left:32px}}
