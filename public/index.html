@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/role-art.css" />
   <link rel="stylesheet" href="/quest-plan.css" />
   <link rel="stylesheet" href="/timer.css" />
+  <link rel="stylesheet" href="/vote-history.css" />
 </head>
 <body>
   <div class="bg"></div>
@@ -69,6 +70,14 @@
         </aside>
       </div>
 
+      <section class="panel vote-history-panel">
+        <details id="voteHistoryPanel">
+          <summary>投票履歴</summary>
+          <p class="tiny muted">チーム編成の承認・否認のみ記録しています。クエストの成功・失敗票は記録しません。</p>
+          <div id="voteHistoryList" class="vote-history-list"></div>
+        </details>
+      </section>
+
       <section class="panel log-panel">
         <details>
           <summary>Dispatch Log</summary>
@@ -103,5 +112,6 @@
   <script src="/role-reference.js"></script>
   <script src="/role-art.js"></script>
   <script src="/spectator.js"></script>
+  <script src="/vote-history.js"></script>
 </body>
 </html>
