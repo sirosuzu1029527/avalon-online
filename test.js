@@ -110,7 +110,7 @@ async function main(){
 
   assert.deepEqual(TIMER_DEFAULTS,{enabled:true,team:120,vote:30,result:20,quest:30,assassination:120});
   assert.equal(r2.players.filter(p=>ROLE_META[p.role].team==='evil').length,QUEST_CONFIG[5].evil);
-  const home=await fetch(base+'/');assert.equal(home.status,200);assert.match(await home.text(),/vote-history\.js/);
+  const home=await fetch(base+'/');assert.equal(home.status,200);const html=await home.text();assert.match(html,/vote-history\.js/);assert.match(html,/<details id="voteHistoryPanel">\s*<summary>投票履歴<\/summary>/);assert.doesNotMatch(html,/id="voteHistoryBtn"/);
   console.log('All tests passed');
   await new Promise(resolve=>server.close(resolve));
 }

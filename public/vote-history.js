@@ -1,24 +1,10 @@
 (() => {
-  const button = $('voteHistoryBtn');
-  const panel = $('voteHistoryPanel');
   const list = $('voteHistoryList');
   let lastRoom = null;
   let lastHistory = null;
 
-  button.onclick = () => {
-    const open = panel.classList.toggle('hidden') === false;
-    button.setAttribute('aria-expanded', String(open));
-    if (open) panel.scrollIntoView({behavior:'smooth',block:'start'});
-  };
-
   function renderVoteHistory() {
     if (!state) return;
-    const visible = state.phase !== 'lobby';
-    button.classList.toggle('hidden', !visible);
-    if (!visible) {
-      panel.classList.add('hidden');
-      button.setAttribute('aria-expanded', 'false');
-    }
     // Keep the panel and expanded proposals open across SSE state refreshes.
     const history = state.voteHistory || [];
     const historyKey = JSON.stringify(history);
