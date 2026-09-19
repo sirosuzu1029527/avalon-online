@@ -60,9 +60,57 @@ async function main(){
   await post('/api/action',{code:c2.code,token:'late',type:'leaveRoom',payload:{}});
   assert.equal(r2.spectators.length,0);
 
+  // A proposal is only public after every player has voted.
+  assert.deepEqual(publicState(r2,r2.players[0]).voteHistory,[]);
+  const originalLeader = r2.players.find(p=>p.id===r2.leaderId);
+  assert.equal(originalLeader.id,leader.id);
+  for(const [i,p] of r2.players.slice(1).entries()){
+    await post('/api/action',{code:c2.code,token:p.token,type:'voteTeam',payload:{approve:i===0}});
+    if(i<3)assert.equal(publicState(r2,r2.players[0]).voteHistory.length,0);
+  }
+  assert.equal(r2.phase,'vote_result');
+  let history=publicState(r2,r2.players[0]).voteHistory;
+  assert.equal(history.length,1);
+  assert.deepEqual(history[0].votes.map(v=>v.approve),r2.players.map(p=>p===r2.players[0]||p===r2.players[1]));
+  assert.equal(history[0].approvals,2);
+  assert.equal(history[0].rejects,3);
+  assert.equal(history[0].approved,false);
+  assert.equal(history[0].questIndex,0);
+  assert.equal(history[0].proposalInQuest,1);
+  assert.deepEqual(history[0].team.map(p=>p.id),team);
+  assert.deepEqual(history[0].leader,{id:originalLeader.id,name:originalLeader.name});
+  assert.equal(history[0].votes.every(v=>typeof v.name==='string'),true);
+  assert.equal('questVotes' in history[0],false);
+
+  // A rejected proposal stays available after moving to the next leader.
+  await post('/api/action',{code:c2.code,token:'x1',type:'advanceResult',payload:{}});
+  assert.equal(r2.phase,'team');
+  assert.equal(publicState(r2,r2.players[0]).voteHistory.length,1);
+  const leader2=r2.players.find(p=>p.id===r2.leaderId);
+  await post('/api/action',{code:c2.code,token:leader2.token,type:'proposeTeam',payload:{playerIds:team}});
+  for(const p of r2.players)await post('/api/action',{code:c2.code,token:p.token,type:'voteTeam',payload:{approve:true}});
+  history=publicState(r2,r2.players[0]).voteHistory;
+  assert.equal(history.length,2);
+  assert.equal(history[1].proposalInQuest,2);
+  assert.equal(history[1].approved,true);
+  assert.equal(history[1].approvals,5);
+  assert.equal(history[1].rejects,0);
+
+  // Results survive the end screen and rematch lobby, then clear on new game.
+  await post('/api/action',{code:c2.code,token:'x1',type:'endGame',payload:{}});
+  assert.equal(r2.phase,'gameover');
+  assert.equal(publicState(r2,r2.players[0]).voteHistory.length,2);
+  await post('/api/action',{code:c2.code,token:'x1',type:'restartGame',payload:{}});
+  for(const p of r2.players)await post('/api/action',{code:c2.code,token:p.token,type:'returnToLobby',payload:{}});
+  assert.equal(r2.phase,'lobby');
+  assert.equal(r2.voteHistory.length,2);
+  await post('/api/action',{code:c2.code,token:'x1',type:'startGame',payload:{}});
+  assert.equal(r2.phase,'team');
+  assert.deepEqual(publicState(r2,r2.players[0]).voteHistory,[]);
+
   assert.deepEqual(TIMER_DEFAULTS,{enabled:true,team:120,vote:30,result:20,quest:30,assassination:120});
   assert.equal(r2.players.filter(p=>ROLE_META[p.role].team==='evil').length,QUEST_CONFIG[5].evil);
-  const home=await fetch(base+'/');assert.equal(home.status,200);assert.match(await home.text(),/spectator\.js/);
+  const home=await fetch(base+'/');assert.equal(home.status,200);assert.match(await home.text(),/vote-history\.js/);
   console.log('All tests passed');
   await new Promise(resolve=>server.close(resolve));
 }
